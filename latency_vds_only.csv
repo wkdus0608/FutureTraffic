@@ -1,0 +1,2 @@
+﻿model,horizon_minutes,lookback_bins,train_rows,test_rows,fit_ms,infer_ms_mean,infer_ms_p50,infer_ms_p95,test_mae,test_rmse,realtime_note
+vds_only_hgb_sklearn,15,12,218,55,220.863,2.9791,2.7855,4.2722,2.7018,3.3483,특징이 이미 있으면 예측은 이 지연시간만 든다. HLS 끊김과 무관.

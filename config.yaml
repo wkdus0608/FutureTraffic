@@ -1,0 +1,99 @@
+# 판교1 수집/조인 설정. chunk_seconds, coverage_min 은 시험용 기본값.
+
+site:
+  cctv_name: "[경부선] 판교1"
+  vds_id_seoul: "0010VDS31400"
+  vds_id_busan: "0010VDE31400"
+
+its:
+  cctv_url: "https://openapi.its.go.kr:9443/cctvInfo"
+  type: "all"
+  minX: "127.00"
+  maxX: "127.30"
+  minY: "37.30"
+  maxY: "37.60"
+  getType: "json"
+  cctv_type: "4"
+
+its_vds:
+  enabled: true
+  url: "https://openapi.its.go.kr:9443/vdsInfo"
+  poll_seconds: 60
+  timeout_seconds: 90
+
+collection:
+  chunk_seconds: 25
+  sample_fps: 1.0
+  bin_seconds: 300
+  coverage_min: 0.40
+  fail_backoff_seconds: 8
+  consecutive_fail_limit: 20
+  keep_video: false
+  snapshot_every_bin: true
+  frame_width: 720
+  frame_height: 480
+
+ffmpeg:
+  http_persistent: false
+  user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  referer: "https://www.its.go.kr/"
+  rw_timeout_us: 15000000
+
+# 정규화 좌표. 원점은 좌상단. 판교1 720x480, 사용자 빨간선 스케치 기준.
+# 부산=좌측 도로 경계~중앙분리대, 서울=중앙분리대~우측 도로 경계.
+# 직선 사다리꼴 대신 주/야간 스케치의 굴곡을 평균한 다각형을 사용한다.
+roi:
+  seoul:
+    # 중앙분리대: 위에서 아래로
+    - [0.8750, 0.3000]
+    - [0.7611, 0.4167]
+    - [0.6444, 0.5417]
+    - [0.5681, 0.6250]
+    - [0.4750, 0.7500]
+    - [0.3778, 0.8750]
+    - [0.2694, 1.0000]
+    # 우측 도로 경계: 아래에서 위로
+    - [0.9056, 1.0000]
+    - [0.9222, 0.7917]
+    - [0.9306, 0.6250]
+    - [0.9361, 0.4583]
+    - [0.9389, 0.3625]
+  busan:
+    # 좌측 도로 경계: 위에서 아래로. 경계가 화면 밖으로 나간 뒤에는 좌측 끝을 따른다.
+    - [0.7653, 0.3021]
+    - [0.5917, 0.4167]
+    - [0.4597, 0.5000]
+    - [0.3319, 0.5833]
+    - [0.2264, 0.6667]
+    - [0.1194, 0.7500]
+    - [0.0181, 0.8083]
+    - [0.0000, 0.8200]
+    - [0.0000, 1.0000]
+    # 중앙분리대: 아래에서 위로
+    - [0.2694, 1.0000]
+    - [0.3778, 0.8750]
+    - [0.4750, 0.7500]
+    - [0.5681, 0.6250]
+    - [0.6444, 0.5417]
+    - [0.7611, 0.4167]
+    - [0.8750, 0.3000]
+  osd_masks:
+    - [0.00, 0.00, 0.28, 0.12]
+    - [0.70, 0.00, 1.00, 0.10]
+    - [0.00, 0.78, 1.00, 1.00]
+    - [0.74, 0.36, 0.90, 0.46]
+    - [0.86, 0.50, 1.00, 0.60]
+  # 서울 본선을 가로지름. 카메라로 다가오는 방향(y 증가)만 통과로 센다.
+  counting_line_seoul: [[0.6750, 0.5208], [0.9222, 0.5208]]
+
+detection:
+  model: "yolov8n.pt"
+  conf: 0.25
+  vehicle_classes: [2, 3, 5, 7]
+  stopped_pixel_speed: 8.0
+  night_brightness: 50
+
+eval:
+  horizon_minutes: 15
+  latency_repeats: 50
+  lookback_bins: 6

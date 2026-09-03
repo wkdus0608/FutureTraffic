@@ -1,0 +1,8 @@
+requests
+pyyaml
+python-dotenv
+numpy
+pandas
+opencv-python-headless
+scikit-learn
+lightgbm
