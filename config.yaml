@@ -13,7 +13,7 @@ its:
   minY: "37.30"
   maxY: "37.60"
   getType: "json"
-  cctv_type: "4"
+  cctv_type: "5"
 
 its_vds:
   enabled: true
@@ -26,12 +26,16 @@ collection:
   sample_fps: 1.0
   bin_seconds: 300
   coverage_min: 0.40
-  fail_backoff_seconds: 8
-  consecutive_fail_limit: 20
+  fail_backoff_seconds: [5, 10, 20, 30]
+  # 0이면 한도 초과 외에는 멈추지 않는다.
+  consecutive_fail_limit: 0
   keep_video: false
   snapshot_every_bin: true
   frame_width: 720
   frame_height: 480
+  validation_every_minutes: 60
+  validation_seconds: 5
+  max_validation_files: 24
 
 ffmpeg:
   http_persistent: false
@@ -87,11 +91,14 @@ roi:
   counting_line_seoul: [[0.6750, 0.5208], [0.9222, 0.5208]]
 
 detection:
-  model: "yolov8n.pt"
-  conf: 0.25
+  model: "models/yolo26m.pt"
+  conf: 0.20
   vehicle_classes: [2, 3, 5, 7]
   stopped_pixel_speed: 8.0
-  night_brightness: 50
+  # 판교1은 야간 가로등 때문에 ROI 평균 밝기가 주간과 비슷하다.
+  # 밝기 임계값으로는 밤을 가릴 수 없어서 KST 시각으로 판정한다.
+  night_start_hour: 19
+  night_end_hour: 6
 
 eval:
   horizon_minutes: 15

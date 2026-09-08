@@ -7,3 +7,15 @@ recordings/
 yolov8*.pt
 runs/
 *.log
+data/sessions/*
+!data/sessions/.gitkeep
+data/dataset/*.csv
+data/dataset/**/*.csv
+!data/dataset/.gitkeep
+yolo*.pt
+videos/validation/*
+!videos/validation/.gitkeep
+logs/*
+!logs/.gitkeep
+models/*
+!models/.gitkeep

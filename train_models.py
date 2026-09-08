@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 
-"""Train VDS-only, CCTV-only, and multimodal models on aligned 5-minute bins."""
+"""Train VDS-only, CCTV-only, and multimodal models.
+
+Default path is the 15-minute dataset: current 15 min features → next 15 min
+mean VDS speed. A 5-minute joined CSV still works via --joined.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +18,7 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
 
-from its_common import load_config
+from its_common import MODELS_DIR, dataset_15min_path, detector_tag, load_config
 
 
 CCTV_COLS = [
@@ -30,6 +34,7 @@ VDS_COLS = [
     "vds_seoul_speed",
     "vds_seoul_occupancy",
 ]
+WINDOW_SUFFIXES = ("_m0", "_m5", "_m10")
 
 
 def make_model(n_rows: int = 32):
@@ -60,6 +65,23 @@ def add_lags(frame: pd.DataFrame, columns: list[str], lookback: int) -> pd.DataF
         for lag in range(1, lookback + 1):
             out[f"{col}_lag{lag}"] = out[col].shift(lag)
     return out
+
+
+def expand_window_cols(columns, bases: list[str]) -> list[str]:
+    names = list(columns)
+    out = []
+    for base in bases:
+        if base in names:
+            out.append(base)
+        for suffix in WINDOW_SUFFIXES:
+            name = f"{base}{suffix}"
+            if name in names:
+                out.append(name)
+    return out
+
+
+def is_15min_dataset(data: pd.DataFrame) -> bool:
+    return "target_speed_next_15min" in data.columns
 
 
 def supervised(frame: pd.DataFrame, feature_cols: list[str], horizon_bins: int):
@@ -128,29 +150,40 @@ def evaluate(name: str, x, y, repeats: int) -> dict:
     }
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="세 모델 MAE/RMSE/처리시간 비교")
-    parser.add_argument("--joined", required=True, help="joined_vds_cctv.csv")
-    parser.add_argument("--config", default=None)
-    parser.add_argument("--out", default=None)
-    args = parser.parse_args()
+def prepare_15min(data: pd.DataFrame) -> tuple[pd.DataFrame, list[str], list[str], dict]:
+    work = data.copy()
+    if "window_start" in work.columns:
+        work["window_start"] = pd.to_datetime(work["window_start"])
+        work = work.sort_values("window_start").reset_index(drop=True)
+    work["target"] = work["target_speed_next_15min"]
+    cctv_bases = [c for c in CCTV_COLS if any(f"{c}{s}" in work.columns for s in WINDOW_SUFFIXES) or c in work.columns]
+    if not any(c.startswith("seoul_density_mean") for c in expand_window_cols(work.columns, ["seoul_density_mean"])):
+        if any(f"seoul_count_mean{s}" in work.columns for s in WINDOW_SUFFIXES):
+            cctv_bases = ["seoul_count_mean"] + cctv_bases
+    vds_features = expand_window_cols(work.columns, VDS_COLS)
+    cctv_features = expand_window_cols(work.columns, cctv_bases)
+    meta = {
+        "task": "current_15min_to_next_15min",
+        "horizon_minutes": 15,
+        "lookback_bins": 3,
+    }
+    return work, vds_features, cctv_features, meta
 
-    config = load_config(args.config)
+
+def prepare_5min(data: pd.DataFrame, config: dict) -> tuple[pd.DataFrame, list[str], list[str], dict]:
     horizon_minutes = int(config["eval"]["horizon_minutes"])
     bin_minutes = max(1, int(config["collection"]["bin_seconds"]) // 60)
     horizon_bins = max(1, horizon_minutes // bin_minutes)
     lookback = int(config["eval"].get("lookback_bins") or 6)
-    repeats = int(config["eval"].get("latency_repeats") or 50)
-
-    data = pd.read_csv(args.joined)
-    data["bin_start"] = pd.to_datetime(data["bin_start"])
-    data = data.sort_values("bin_start").reset_index(drop=True)
-    cctv_cols = [c for c in CCTV_COLS if c in data.columns]
-    if "seoul_density_mean" not in cctv_cols and "seoul_count_mean" in data.columns:
+    work = data.copy()
+    work["bin_start"] = pd.to_datetime(work["bin_start"])
+    work = work.sort_values("bin_start").reset_index(drop=True)
+    cctv_cols = [c for c in CCTV_COLS if c in work.columns]
+    if "seoul_density_mean" not in cctv_cols and "seoul_count_mean" in work.columns:
         cctv_cols = ["seoul_count_mean"] + cctv_cols
-    if "fair_eval" in data.columns:
-        data = data[data["fair_eval"] == 1].copy()
-    n_bins = len(data)
+    if "fair_eval" in work.columns:
+        work = work[work["fair_eval"] == 1].copy()
+    n_bins = len(work)
     if n_bins < 15:
         print(f"칸이 {n_bins}개라 lookback=0, horizon=1칸으로 파이프라인 시험을 합니다.")
         lookback = 0
@@ -166,12 +199,43 @@ def main() -> None:
             horizon_bins = max_h
             horizon_minutes = max_h * bin_minutes
         lookback = min(lookback, max(1, n_bins // 3))
-    data["target"] = data["vds_seoul_speed"].shift(-horizon_bins)
-    data = add_lags(data, VDS_COLS + cctv_cols, lookback)
-
+    work["target"] = work["vds_seoul_speed"].shift(-horizon_bins)
+    work = add_lags(work, VDS_COLS + cctv_cols, lookback)
     vds_features = VDS_COLS + [f"{c}_lag{i}" for c in VDS_COLS for i in range(1, lookback + 1)]
     cctv_features = cctv_cols + [f"{c}_lag{i}" for c in cctv_cols for i in range(1, lookback + 1)]
+    meta = {
+        "task": "5min_bin_horizon",
+        "horizon_minutes": horizon_minutes,
+        "lookback_bins": lookback,
+        "horizon_bins": horizon_bins,
+    }
+    return work, vds_features, cctv_features, meta
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="세 모델 MAE/RMSE/처리시간 비교")
+    parser.add_argument("--joined", default=None, help="5분 joined CSV")
+    parser.add_argument("--dataset", default=None, help="pangyo1_15min_dataset.csv")
+    parser.add_argument("--config", default=None)
+    parser.add_argument("--out", default=None)
+    args = parser.parse_args()
+
+    config = load_config(args.config)
+    repeats = int(config["eval"].get("latency_repeats") or 50)
+    csv_path = Path(args.dataset or args.joined or dataset_15min_path(config))
+    if not csv_path.exists() or csv_path.stat().st_size == 0:
+        raise SystemExit(f"학습 CSV가 없습니다: {csv_path}")
+
+    data = pd.read_csv(csv_path)
+    use_15min = is_15min_dataset(data)
+    if use_15min:
+        data, vds_features, cctv_features, meta = prepare_15min(data)
+        print("과제: 현재 15분 특징 → 다음 15분 평균속도")
+    else:
+        data, vds_features, cctv_features, meta = prepare_5min(data, config)
+        print("과제: 5분 칸 + lag → horizon분 후 속도")
     both = vds_features + cctv_features
+    horizon_bins = int(meta.get("horizon_bins") or 1)
 
     rows = []
     for name, cols in (
@@ -191,17 +255,26 @@ def main() -> None:
                     "rmse": "",
                     "fit_ms": "",
                     "infer_ms_p50": "",
+                    "task": meta["task"],
                     "note": f"공정 비교 칸이 {len(work)}개라 학습하지 않음. 수집을 더 돌리세요.",
                 }
             )
             continue
         result = evaluate(name, x, y, repeats)
-        result["horizon_minutes"] = horizon_minutes
-        result["lookback_bins"] = lookback
+        result["task"] = meta["task"]
+        result["horizon_minutes"] = meta["horizon_minutes"]
+        result["lookback_bins"] = meta["lookback_bins"]
         rows.append(result)
 
-    out = Path(args.out) if args.out else Path(args.joined).resolve().parent / "model_compare.csv"
+    if args.out:
+        out = Path(args.out)
+    elif use_15min:
+        out = MODELS_DIR / detector_tag(config) / "model_compare.csv"
+    else:
+        out = csv_path.resolve().parent / "model_compare.csv"
+    out.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows).to_csv(out, index=False, encoding="utf-8-sig")
+    print("입력:", csv_path)
     print("저장:", out)
     print(pd.DataFrame(rows).to_string(index=False))
 

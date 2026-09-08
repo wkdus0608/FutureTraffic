@@ -43,6 +43,39 @@ def pearson(left: pd.Series, right: pd.Series) -> float:
     return float(aligned.iloc[:, 0].corr(aligned.iloc[:, 1]))
 
 
+def join_live_session(
+    features_path: Path,
+    vds_live_path: Path,
+    config: dict,
+    session_id: str,
+    session_start,
+    session_end,
+) -> pd.DataFrame:
+    """Join one collection session. Adds fair_eval and bin_complete."""
+    from dataset_io import mark_complete_bins, to_naive_kst
+
+    seoul_id = config["site"]["vds_id_seoul"]
+    busan_id = config["site"]["vds_id_busan"]
+    coverage_min = float(config["collection"]["coverage_min"])
+    bin_seconds = int(config["collection"]["bin_seconds"])
+    features = pd.read_csv(features_path)
+    features["bin_start"] = to_naive_kst(features["bin_start"])
+    live_5min = aggregate_vds_5min(Path(vds_live_path), bin_seconds)
+    live_5min = live_5min.rename(columns={"bin_start": "구간시작시각"})
+    seoul, busan = vds_tables_from_5min(live_5min, seoul_id, busan_id)
+    joined = features.merge(seoul, on="bin_start", how="left").merge(
+        busan, on="bin_start", how="left"
+    )
+    if "cctv_missing" not in joined.columns:
+        joined["cctv_missing"] = (joined["coverage"] < coverage_min).astype(int)
+    joined["fair_eval"] = (
+        (joined["cctv_missing"] == 0) & joined["vds_seoul_speed"].notna()
+    ).astype(int)
+    joined = mark_complete_bins(joined, session_start, session_end, bin_seconds)
+    joined["session_id"] = session_id
+    return joined
+
+
 def vds_tables_from_5min(vds: pd.DataFrame, seoul_id: str, busan_id: str):
     vds = vds.copy()
     vds["구간시작시각"] = to_naive_kst(vds["구간시작시각"])

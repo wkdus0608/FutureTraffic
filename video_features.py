@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import cv2
 import numpy as np
@@ -56,12 +56,12 @@ def prepare_detection_frame(
     osd_masks: list[list[float]],
     polygons: list[np.ndarray],
 ) -> np.ndarray:
-    """OSD and non-lane pixels are blacked out before YOLO."""
-    masked = apply_osd_mask(frame, osd_masks)
-    keep = np.zeros(masked.shape[:2], dtype=np.uint8)
+    """Keep only lane ROI pixels. OSD boxes are not punched out of the ROI."""
+    del osd_masks
+    keep = np.zeros(frame.shape[:2], dtype=np.uint8)
     for poly in polygons:
-        keep = cv2.bitwise_or(keep, polygon_mask(masked.shape[:2], poly))
-    return cv2.bitwise_and(masked, masked, mask=keep)
+        keep = cv2.bitwise_or(keep, polygon_mask(frame.shape[:2], poly))
+    return cv2.bitwise_and(frame, frame, mask=keep)
 
 
 def box_center(xyxy: list[float]) -> tuple[float, float]:
@@ -77,6 +77,35 @@ def roi_area(polygon: np.ndarray) -> float:
     return max(1.0, float(cv2.contourArea(polygon)))
 
 
+KST = timezone(timedelta(hours=9))
+
+
+def hour_kst(value) -> int:
+    if isinstance(value, datetime):
+        ts = value
+    else:
+        ts = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if ts.tzinfo is None:
+        return ts.hour
+    return ts.astimezone(KST).hour
+
+
+def is_night_kst(
+    value,
+    night_start_hour: int = 19,
+    night_end_hour: int = 6,
+) -> int:
+    """Night on this site is a clock window. Lit CCTV ROI is not darker at night."""
+    hour = hour_kst(value)
+    start = int(night_start_hour)
+    end = int(night_end_hour)
+    if start == end:
+        return 0
+    if start > end:
+        return int(hour >= start or hour < end)
+    return int(start <= hour < end)
+
+
 def mean_brightness(frame: np.ndarray, polygon: np.ndarray) -> float:
     mask = polygon_mask(frame.shape[:2], polygon)
     pixels = frame[mask > 0]
@@ -89,6 +118,21 @@ def floor_bin(ts: datetime, bin_seconds: int) -> datetime:
     epoch = int(ts.timestamp())
     floored = epoch - (epoch % bin_seconds)
     return datetime.fromtimestamp(floored, tz=ts.tzinfo)
+
+
+def sample_bucket(ts: datetime, sample_fps: float) -> int:
+    """Wall-clock bucket so at most sample_fps frames are kept per second."""
+    period = 1.0 / max(1e-6, float(sample_fps))
+    return int(ts.timestamp() // period)
+
+
+def keep_wall_clock_sample(
+    ts: datetime, last_bucket: int | None, sample_fps: float
+) -> tuple[bool, int]:
+    bucket = sample_bucket(ts, sample_fps)
+    if last_bucket is not None and bucket <= last_bucket:
+        return False, last_bucket
+    return True, bucket
 
 
 class CentroidTracker:
@@ -293,9 +337,10 @@ def finalize_bin(
         "brightness_mean": round(
             (stats["brightness_sum"] / ok_frames) if ok_frames else 0.0, 2
         ),
-        "is_night": int(
-            ((stats["brightness_sum"] / ok_frames) if ok_frames else 0.0)
-            < float(config["detection"]["night_brightness"])
+        "is_night": is_night_kst(
+            bin_start,
+            config["detection"].get("night_start_hour", 19),
+            config["detection"].get("night_end_hour", 6),
         ),
         "detector": detector_name,
         "chunk_seconds_used": collection["chunk_seconds"],
@@ -358,8 +403,8 @@ def draw_roi_overlay(
     busan_boxes: list[list[float]] | None = None,
     crossings: int | None = None,
 ) -> np.ndarray:
+    del osd_masks
     out = frame.copy()
-    height, width = out.shape[:2]
     overlay = out.copy()
     cv2.fillPoly(overlay, [seoul_polygon], (0, 180, 0))
     cv2.fillPoly(overlay, [busan_polygon], (0, 140, 255))
@@ -385,9 +430,6 @@ def draw_roi_overlay(
     for box in busan_boxes or []:
         x1, y1, x2, y2 = [int(v) for v in box]
         cv2.rectangle(out, (x1, y1), (x2, y2), (0, 165, 255), 2)
-    for rect in osd_masks:
-        x1, y1, x2, y2 = pixel_rect(rect, width, height)
-        cv2.rectangle(out, (x1, y1), (x2, y2), (0, 0, 220), 1)
     seoul_label = "Seoul lanes"
     if seoul_count is not None:
         seoul_label = f"Seoul dens {seoul_count}"

@@ -14,7 +14,30 @@ from dotenv import load_dotenv
 
 PROJECT_DIR = Path(__file__).resolve().parent
 RECORDINGS_DIR = PROJECT_DIR / "recordings"
+SESSIONS_DIR = PROJECT_DIR / "data" / "sessions"
+DATASET_DIR = PROJECT_DIR / "data" / "dataset"
+VALIDATION_DIR = PROJECT_DIR / "videos" / "validation"
+LOGS_DIR = PROJECT_DIR / "logs"
+MODELS_DIR = PROJECT_DIR / "models"
+MASTER_CSV = DATASET_DIR / "pangyo1_5min_master.csv"
+DATASET_15MIN_CSV = DATASET_DIR / "pangyo1_15min_dataset.csv"
 DEFAULT_CONFIG = PROJECT_DIR / "config.yaml"
+
+
+def detector_tag(config: dict) -> str:
+    return Path(str(config["detection"]["model"])).stem
+
+
+def model_dataset_dir(config: dict) -> Path:
+    return DATASET_DIR / detector_tag(config)
+
+
+def master_csv_path(config: dict) -> Path:
+    return model_dataset_dir(config) / "pangyo1_5min_master.csv"
+
+
+def dataset_15min_path(config: dict) -> Path:
+    return model_dataset_dir(config) / "pangyo1_15min_dataset.csv"
 
 
 def load_config(path: str | Path | None = None) -> dict:
@@ -121,3 +144,7 @@ def classify_ffmpeg_log(text: str) -> tuple[str, str]:
     if re.search(r"error|failed|invalid data|end of file", lower):
         return "OTHER_ERROR", http_status
     return "OK", http_status
+
+
+def is_hls_404(category: str) -> bool:
+    return category in {"PLAYLIST_404", "SEGMENT_404", "HTTP_404_UNCLASSIFIED"}

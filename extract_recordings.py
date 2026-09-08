@@ -25,6 +25,7 @@ from video_features import (
     empty_bin_stats,
     floor_bin,
     group_detections,
+    keep_wall_clock_sample,
     match_stopped,
     mean_brightness,
     pixel_polygon,
@@ -94,6 +95,7 @@ def main() -> None:
     print("detector:", detector.name)
     bins: dict[datetime, dict] = {}
     last_snapshot_bin: datetime | None = None
+    last_sample_bucket: int | None = None
     frame_header = [
         "시각", "bin_start", "chunk", "seoul_count", "busan_count",
         "seoul_stopped", "seoul_crossings", "seoul_car", "seoul_motorcycle",
@@ -109,6 +111,11 @@ def main() -> None:
             if frame.shape[1] != width or frame.shape[0] != height:
                 frame = cv2.resize(frame, (width, height))
             ts = start_ts + timedelta(seconds=i / sample_fps)
+            keep, last_sample_bucket = keep_wall_clock_sample(
+                ts.to_pydatetime(), last_sample_bucket, sample_fps
+            )
+            if not keep:
+                continue
             detect_frame = prepare_detection_frame(
                 frame, config["roi"]["osd_masks"], [seoul_poly, busan_poly]
             )
