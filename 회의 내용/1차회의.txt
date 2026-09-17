@@ -1,0 +1,260 @@
+﻿새로운 녹음 5
+2026.09.11 금 오후 1:33 ・ 23분 31초
+전성민
+
+
+참석자 1 
+I compare these three models and the MAU is Vedius only Model is the most loyal
+
+참석자 2 
+CCTV only and multi-model.
+
+참석자 1 
+I thought the multimodel is the
+
+참석자 2 
+should be better
+
+참석자 1 
+and should be better about VDS only Model is better.
+
+참석자 2 
+What are the VDS data? What are those kind of information they provided?
+VDS
+
+참석자 2 
+speed volume length number, speed volume, occupancy.
+So this VDS ID is the camera ID or some road ID
+
+참석자 1 
+I load the ID.
+
+참석자 2 
+So this road, the number main number five lanes each lanes speed the volume, how many vehicles passed and the occupancy is like density like how many a lot of vehicles density is high rights crap.
+So maybe you need to verify.
+If you are not sure, you can try to verify name number 1, 2, 3, 45, five lane five lane five lane, five lane five to the one road five lanes then they detect each lane speed how many.
+So in this is that this is the time okay same times 10 and after one minute, about
+
+참석자 2 
+another one minute. So every one minute one data yeah one minute.
+So this ah, okay so the Deds, the E is the east direction south S is south source direction.
+So yeah de DS I don't know vehicle direction I don't know.
+Yeah E and s right so these are two, two roads.
+One road is heading to the south the other road heading towards the east.
+I mean I'm not sure I just guess VDE and VDS.
+So what's the definition they have here?
+So so for example, yeah, VD, VDS, VDE again VDS
+
+참석자 1 
+I think the BDE is to Seoul or to Busan.
+
+참석자 1 
+There's two ways
+
+참석자 2 
+this direction this is to Busan this is to Seoul then.
+So yeah need to figure out which.
+So you have two roads, right one road must be to Seoul the other road to Busan.
+So two roads okay so that data, the data you showed right yeah so maybe you can check how do they define this VDSID so okay the means that every one minute they report one data, right every one minute.
+So for the two directions, two ways load report one data.
+So you've got all this information okay
+
+참석자 2 
+all this information then the same is that you use yo YOLO version you do the prediction by yourself and also use this.
+How do you do the prediction based on this data?
+Yeah I mean you tried this VDS data and also you used this kind of screenshot, the video video to detect 1, 2, 3, 4, 5, 6, 7.
+So seven vehicles one, two, three, four, four vehicles.
+So then to determine the traffic.
+So for the yellow so you predict the, the current traffic right?
+So it's like how, what is the speed is the
+
+참석자 2 
+I guess you put the count here counting how many vehicles flow, right?
+How many vehicles so then you also detect the speed based on the so for this one lane.
+So then the thing is the data you use here how to do use this data to predict the speed and volume.
+
+참석자 1 
+I'm sorry I cannot understand your
+
+참석자 2 
+oh okay I mean yeah because I mean so you have this dataset Yes yeah dataset.
+So based on this data set, how do you do the prediction for the speed and volume?
+So you have this kind of data every one minute you have all this one data then with this one.
+So you showed me the table, right comparison Vds-based comparison and the CCTV based and the multi-model.
+The table you just showed me where it is.
+I don't remember the table, the comparison, the performance Oh yeah this one okay
+
+참석자 2 
+So then for the VDS only what is this Model?
+I mean okay SKL HGP estimator.
+So I just wonder how horizon minutes 50 minutes look back three okays current 50 minute to current based on current 50 minutes to next 10 minutes to prediction Yes right So then the thing is this is purely kind of numbers right?
+Numbers. So like you use
+
+참석자 2 
+basically you divided the data into 50 minutes another 10 minutes, another 10 minutes.
+Hoorizon is 15 minutes. Now based on the current 15 minutes, you predict next 15 minutes R.
+So then the question is how did you use this VDS data to do the prediction to get this value M-a-e-i-ms-e fit MS Yeah I mean, could you show me the south code you are running the south code yeah the so code.
+So just take a look at the SS code.
+I know the Model. So for example, you use yellow
+
+참석자 2 
+and except yellow how did you?
+Okay okay 10 VDS only at the beginning 10 VDS and CT multimodal defaults mean VDS speed five-minute join the CSV stills okay anyway
+
+참석자 2 
+mean absolute error okay this is a matrix Model selection time series split.
+So this is a his great than the boosting regressor.
+So basically you are using this regression regression Model.
+
+참석자 1 
+I just ask ED and Moorder so
+
+참석자 2 
+oh, okay they generate this code okay okay so okay I mean yeah so this code use this hester gradient boosting regressor.
+So based on this name, this is a, the regression Model to do.
+So basically regression Model is getting the average based on the past data's average value to do the prediction.
+So yeah anyway okay I see yeah okay
+
+참석자 2 
+so then
+
+참석자 2 
+okay so you make the Model import LGBM.
+
+참석자 2 
+So from light DBM we input I don't know where is a light BM here isca the nine Model is a RI okay if this row is more than 6, we use the rich the try this one otherwise OS eor ookay
+
+참석자 2 
+okay so it's okay this is more like I don't know.
+Yeah from light TBM what is the relationship between TBM with this the his gradient boosting regressor so it's like import another Model LGBM regressor.
+So yeah I mean light GBM
+
+참석자 2 
+okay anyway yeah maybe you can even though this is a generated code so you need to try to understand the Model otherwise it will be difficult for you to learn.
+
+참석자 1 
+I try to understand.
+
+참석자 2 
+So then could you move down evaluation supervised okay okay so the clean clean the data expand the window so it's okay it's 50 minute data set okay the evaluation okay make Model Model Model fit Model modo is from make Model make Model was the front one the densegg based on the size of this egg if it x is smaller than 8.
+Okay so this is the prediction.
+Yeah then you kind of repeat, repeat the doing the reshuffle the dataset to do the repeating
+
+참석자 2 
+training split split data set training and test set.
+Okay so yeah maybe you can try to make sure which Model you are using for the prediction.
+Currently it's some sort of boosting regression Model and also another Model was kind of imported actually I don't know which Model actually is used.
+Okay okay so yeah okay
+
+참석자 2 
+so what's your next step?
+
+참석자 1 
+My next step
+
+참석자 1 
+I collected the CCTV and Pangyo yes but the pangyiwon is like traffic is not that much, not that much
+
+참석자 2 
+okay so maybe try another maybe Yangjae
+
+참석자 1 
+the red line Yeah
+
+참석자 2 
+close to solar
+
+참석자 2 
+yeah Yonjae is always contested.
+Yeah every time. So yeah maybe this is more challenging right because then you use yellow you need to count a 11.
+Yeah and you put count in 9 and how many we are pasted yeah
+
+참석자 1 
+you mean Yangj-cctv is more challenging
+
+참석자 2 
+yeah yeah so yeah the more object you need to detect than the, the more mistakes you make the Model.
+So it is possible that you double kind of count it one big, one big mini band.
+It may be counted as two vehicles from the Yoow Model it is possible so or maybe like this big truck Yeah they may also kind of counted as two vehicles.
+So anyway, you can try it.
+You can get some data from this location.
+Yonje Try the Model.
+
+참석자 1 
+You mean this is more challenging for my project.
+
+참석자 2 
+No no, no more challenging for the Model to learn to detect then the data could be wrong.
+So when you use the Yo, it detects some vehicles.
+The depends on how accurate how like fine you kind of detect vehicles right?
+So some of those smaller objects you cannot detect maybe you can only detect this part okay so in that case so yeah it depends on how you define your kind of scope.
+So you put a line here counting line
+
+참석자 1 
+I caught the ROI this not that
+
+참석자 2 
+just kind of
+
+참석자 1 
+just kind of
+
+참석자 2 
+yeah You can try this new data get some VDS data and also get the CCTV data.
+One thing also because when you use the CCTV, you use YOLO to do the detection.
+Your detection maybe the yellow-based detection maybe not aligned with the VDS.
+VDS is the detection based on this G these transportation centers detection right?
+They also have this kind of object detection.
+Then they have some rule so their rules are different from your rule the rule you made in your YO Model,
+
+참석자 2 
+the counting rule or the speed rule Yeah so is it possible that?
+Yeah the two models are not aligned with each other so yeah
+
+참석자 2 
+so yeah you can try this next week.
+Let's see how, how, the result and if it's possible maybe you so you try to understand the VDS data VDS data how do they do the VDS counting?
+What are the meaning of those you know,
+
+참석자 1 
+meaning the data?
+
+참석자 2 
+Yeah the meaning of the data how do they generate the speed, the volume?
+Yeah they have the speed data right multiple lanes basically they have multiple lanes five lane one, two, three, four, five.
+So each lane they generate one speed and volume.
+So the rule, how did they generate the data?
+
+참석자 1 
+Yeah and understand the
+
+참석자 2 
+yeah the code generated.
+So in the Model so you may check the Model name and check the details, technical detail of that Model how the Model did the prediction based on the current information you have 15 minutes data, you predict the next 15 minutes data right?
+So basically it's based on regression Model is just a very simple Model you just
+
+참석자 2 
+basically it says an average so you average past the 15 minutes based on this average then you predict the future.
+So you past the 15 minutes you have increasing then you predict the next 10 minutes is also increasing.
+But if in the past the 50 minutes are decreasing, then you also predict next 10 minutes decreasing.
+So basically the average stuff and the may not be accurate to do the prediction, maybe we need to consider some more advanced Model
+
+참석자 2 
+okay then we can talk about later.
+So if we have some more information so for the next week you try to understand the VDS data set how do they generate those data?
+And also at the same time you can try to collect the data from this site okay VDS data and CCTV you can use the yellow again to analyze the footage from this CCTV.
+
+참석자 2 
+So yeah you can okay yeah okay yeah so then meanwhile before next meeting you can update of write down you can put your source code into the notion the notion I shared with you the notion right you can put the sales code into the notion put your some sample data set into the notion that I can kind of review to check.
+And also next time you can share your kind of funding how those data, VDS data is generated.
+Okay you can write your report in the notion this notion right
+
+참석자 2 
+yeah yeah you can put any you can put into the meeting or you can put into the report or references you can put the data, sample data set okay then I can before the next meeting I can take a look and try to understand the issues we are having.
+Okay okay yeah okay pretty much for today
+
+참석자 2 
+I'll see you next time. Yeah see you next week.
+
+
+clovanote.naver.com

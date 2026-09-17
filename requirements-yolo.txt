@@ -1,2 +1,0 @@
-# 차량 수/차종 특징용. torch가 커서 기본 requirements에는 넣지 않는다.
-ultralytics
