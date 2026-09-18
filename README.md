@@ -9,6 +9,80 @@ AI Hub의 부천시 교통량과 도로망을 SUMO에 적용하고, DQN으로 �
 - 보상: 대기행렬 감소
 - 비교: 고정신호와 DQN의 평균 대기시간, 최대 대기행렬, 통과 차량 수
 
+## 프로젝트 흐름
+
+AI Hub 데이터로 SUMO 도로망과 차량 흐름을 구성합니다. Colab에서는 DQN이 SUMO와 반복해서 상호작용하며 신호 제어를 학습하고, 마지막에 동일한 교통량에서 고정신호와 성능을 비교합니다.
+
+```mermaid
+flowchart TD
+    subgraph RAW["① AI Hub 원본 파일"]
+        NET["1200012n.net.xml<br/>도로·차로·교차로<br/>신호교차로 12개와 고정신호"]
+        ROUTES["possible_routes.rou.xml<br/>후보 차량 경로 3,244개"]
+        TYPES["exp.rou.xml<br/>차량 종류와 주행 특성"]
+        TURN["p.xml · b.xml · t.xml · m.xml<br/>시간대별 실제 회전교통량"]
+    end
+
+    ROUTES --> SAMPLER
+    TYPES --> SAMPLER
+    TURN --> SAMPLER
+
+    subgraph PRE["② 차량 흐름 생성"]
+        SAMPLER["routeSampler.py<br/>교통량에 맞는 후보 경로 선택"]
+        ROUTEFILE["traffic_*.rou.xml<br/>차종·출발시간·이동경로"]
+        CONFIG["scenario.sumocfg<br/>도로망·차량 경로·실행시간 연결"]
+        SAMPLER --> ROUTEFILE
+        ROUTEFILE --> CONFIG
+        NET --> CONFIG
+    end
+
+    CONFIG --> CHECK
+    CONFIG --> BASE
+    CONFIG --> ENV
+
+    subgraph SUMO["③ SUMO 환경"]
+        CHECK["SUMO-GUI 확인<br/>도로·차량·신호 점검"]
+        BASE["고정신호 기준 실험<br/>12개 내장 신호 사용"]
+        ENV["SUMO-RL 환경<br/>204820만 DQN 제어<br/>나머지 11개는 고정신호"]
+    end
+
+    BASE --> BASEOUT["baseline_metrics.csv<br/>대기시간·대기행렬·통과량"]
+
+    subgraph TRAIN["④ Colab DQN 학습"]
+        OBS["상태 45개<br/>신호 4 + 최소 녹색시간 1<br/>차로 밀도 20 + 대기행렬 20"]
+        DQN["Stable-Baselines3 DQN<br/>교통상태에 맞는 신호 선택"]
+        ACTION["행동 0~3<br/>녹색신호 단계 선택"]
+        RESULT["SUMO가 차량을 이동시키고<br/>새 교통상태 계산"]
+        REWARD["보상<br/>대기 차량이 적을수록 높은 값"]
+
+        ENV --> OBS
+        OBS --> DQN
+        DQN --> ACTION
+        ACTION --> RESULT
+        RESULT --> OBS
+        RESULT --> REWARD
+        REWARD --> DQN
+    end
+
+    DQN --> MODEL["dqn_204820.zip<br/>학습된 신호제어 모델"]
+    DQN --> LOG["training_log.csv<br/>보상과 대기행렬 변화"]
+
+    subgraph EVAL["⑤ 최종 평가"]
+        TEST["학습에 사용하지 않은<br/>시간대·날짜·시드"]
+        FIXEDTEST["고정신호 실행"]
+        DQNTEST["학습된 DQN 실행"]
+        COMPARE["동일한 차량으로 비교<br/>평균 대기시간·최대 대기행렬<br/>통과 차량 수·평균 통행시간"]
+        FINAL["성능 비교표·그래프<br/>SUMO-GUI 시연·최종 보고서"]
+
+        TEST --> FIXEDTEST
+        TEST --> DQNTEST
+        MODEL --> DQNTEST
+        FIXEDTEST --> COMPARE
+        DQNTEST --> COMPARE
+        BASEOUT --> COMPARE
+        COMPARE --> FINAL
+    end
+```
+
 ## 사용 데이터
 
 - `1200012n.net.xml`: 부천시 SUMO 도로망
