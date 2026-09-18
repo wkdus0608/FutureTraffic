@@ -163,6 +163,12 @@ SUMO-RL이 `204820` 교차로만 제어할 수 있는지 먼저 확인합니다.
 
 학습된 모델과 로그는 `results/dqn_20220810_0500/`에 저장됩니다.
 
+## Google Colab
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wkdus0608/FutureTraffic/blob/main/notebooks/FutureTraffic_Colab.ipynb)
+
+Google Drive에 `FutureTraffic/FutureTraffic_colab_data.zip`을 올린 뒤, 노트북을 위에서부터 순서대로 실행합니다.
+
 ## 평가
 
 동일한 차량과 실행 조건에서 고정신호·무작위 신호·DQN을 비교합니다.
