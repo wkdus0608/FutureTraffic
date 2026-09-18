@@ -141,8 +141,11 @@ AI Hub 회전교통량을 SUMO 차량 경로로 변환하고 실행 설정을 �
 도로와 차량 움직임을 화면으로 확인하려면 다음과 같이 실행합니다.
 
 ```bash
+open /Applications/Utilities/XQuartz.app
 .venv/bin/python src/run_fixed_baseline.py --gui
 ```
+
+SUMO-GUI 상단의 실행 버튼을 누르면 차량이 움직입니다. GUI 실행은 기준선 결과 파일을 변경하지 않습니다.
 
 생성되는 파일은 Git에서 제외됩니다.
 

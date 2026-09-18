@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import statistics
+import subprocess
 import sys
 import sysconfig
 import xml.etree.ElementTree as ET
@@ -91,9 +92,29 @@ def main() -> None:
         )
 
     sumo_home = configure_sumo_python()
+    sumo_binary = find_sumo_binary(sumo_home, args.gui)
+
+    if args.gui:
+        environment = os.environ.copy()
+        if sys.platform == "darwin":
+            xquartz_socket = Path("/tmp/.X11-unix/X0")
+            if not xquartz_socket.exists():
+                raise RuntimeError(
+                    "XQuartz가 실행 중이 아닙니다. 먼저 다음 명령을 실행하세요:\n"
+                    "open /Applications/Utilities/XQuartz.app"
+                )
+            environment.setdefault("DISPLAY", ":0")
+        subprocess.Popen(
+            [sumo_binary, "-c", str(config)],
+            env=environment,
+            start_new_session=True,
+        )
+        print("SUMO-GUI를 열었습니다. 상단의 실행 버튼을 눌러 차량을 확인하세요.")
+        print("GUI 실행은 기존 기준선 결과 파일을 변경하지 않습니다.")
+        return
+
     import traci  # type: ignore
 
-    sumo_binary = find_sumo_binary(sumo_home, args.gui)
     tripinfo = output_dir / "tripinfo.xml"
     summary = output_dir / "summary.xml"
     statistics_file = output_dir / "statistics.xml"
