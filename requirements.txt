@@ -1,2 +1,4 @@
 eclipse-sumo==1.27.1
 numpy>=2.0,<3.0
+stable-baselines3[extra]==2.9.0
+sumo-rl @ git+https://github.com/LucasAlegre/sumo-rl.git@86f0fc41401eeca724b2e8878f5020dc6d70c9b4
