@@ -26,6 +26,8 @@ def make_environment(
     seed: int = 42,
     use_gui: bool = False,
     output_prefix: Path | None = None,
+    fixed_ts: bool = False,
+    additional_sumo_cmd: str | None = None,
 ):
     configure_sumo()
     from sumo_rl import SumoEnvironment
@@ -54,5 +56,7 @@ def make_environment(
         enforce_max_green=True,
         reward_fn="diff-waiting-time",
         sumo_seed=seed,
+        fixed_ts=fixed_ts,
         sumo_warnings=False,
+        additional_sumo_cmd=additional_sumo_cmd,
     )

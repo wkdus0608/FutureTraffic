@@ -163,6 +163,22 @@ SUMO-RL이 `204820` 교차로만 제어할 수 있는지 먼저 확인합니다.
 
 학습된 모델과 로그는 `results/dqn_20220810_0500/`에 저장됩니다.
 
+## 평가
+
+동일한 차량과 실행 조건에서 고정신호·무작위 신호·DQN을 비교합니다.
+
+```bash
+.venv/bin/python src/evaluate_policies.py --seeds 42
+```
+
+여러 난수값을 반복 평가하려면 다음과 같이 실행합니다.
+
+```bash
+.venv/bin/python src/evaluate_policies.py --seeds 42 43 44 45 46
+```
+
+결과는 `results/evaluation_20220810_0500/`에 저장됩니다.
+
 생성되는 파일은 Git에서 제외됩니다.
 
 - `data/processed/20220810_0500/`: 도로망, 차량 경로, SUMO 설정
