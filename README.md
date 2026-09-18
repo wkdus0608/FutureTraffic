@@ -110,12 +110,45 @@ CCTV, 개별차량 궤적, OD 데이터는 사용하지 않습니다.
 ```
 
 ## 기술
+
 - Python
 - SUMO / SUMO-RL
 - Stable-Baselines3
 - DQN
 - Google Colab
 
+## SUMO 실행
+
+프로젝트 전용 환경을 만들고 SUMO를 설치합니다.
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+AI Hub 회전교통량을 SUMO 차량 경로로 변환하고 실행 설정을 생성합니다.
+
+```bash
+.venv/bin/python src/prepare_sumo_scenario.py
+```
+
+내장 고정신호로 기준 실험을 실행합니다.
+
+```bash
+.venv/bin/python src/run_fixed_baseline.py
+```
+
+도로와 차량 움직임을 화면으로 확인하려면 다음과 같이 실행합니다.
+
+```bash
+.venv/bin/python src/run_fixed_baseline.py --gui
+```
+
+생성되는 파일은 Git에서 제외됩니다.
+
+- `data/processed/20220810_0500/`: 도로망, 차량 경로, SUMO 설정
+- `results/fixed_20220810_0500/`: 차량별 결과와 기준 성능
+
 ## 현재 상태
 
-샘플 데이터로 차량 경로 생성, SUMO 실행, 단일 교차로 DQN 연결을 확인했습니다.
+샘플 회전교통량으로 차량 1,270대를 생성하고 고정신호 SUMO 실행을 확인했습니다. 전 차량이 정상 도착했으며, 신호 `204820`의 평균 대기시간은 약 50.01초, 최대 대기행렬은 21대였습니다.
