@@ -210,7 +210,9 @@ python src/train_dqn.py \
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/wkdus0608/FutureTraffic/blob/main/notebooks/FutureTraffic_Colab.ipynb)
 
-Google Drive에 `FutureTraffic/FutureTraffic_colab_data.zip`을 올린 뒤, 노트북을 위에서부터 순서대로 실행합니다.
+Google Drive에 `FutureTraffic/FutureTraffic_colab_data.zip`을 올린 뒤, 노트북을
+위에서부터 순서대로 실행합니다. 중간 체크포인트는 Drive에 저장하고, 최종 모델과
+평가 결과는 ZIP으로 묶어 Mac의 다운로드 폴더로 내려받습니다.
 
 ## 평가
 
