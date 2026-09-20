@@ -5,187 +5,106 @@ import csv
 import json
 import os
 import shutil
-import statistics
 import subprocess
 import sys
 import sysconfig
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
-
-TARGET_TLS = "204820"
+from evaluate_policies import run_policy
+from rl_environment import PROJECT_ROOT, SCENARIO_DIR
 
 
 def configure_sumo_python() -> Path:
+    """현재 Python 환경에 설치된 SUMO의 위치를 찾는다."""
     configured = os.environ.get("SUMO_HOME")
     sumo_home = (
         Path(configured).expanduser().resolve()
         if configured
         else (Path(sysconfig.get_paths()["purelib"]) / "sumo").resolve()
     )
-    tools = sumo_home / "tools"
-    if not tools.exists():
-        raise RuntimeError(
-            "SUMO 도구를 찾지 못했습니다. 프로젝트 가상환경에서 실행해 주세요."
-        )
-    sys.path.insert(0, str(tools))
+    if not (sumo_home / "tools").exists():
+        raise RuntimeError("SUMO 도구를 찾지 못했습니다. 프로젝트 가상환경에서 실행하세요.")
     return sumo_home
 
 
-def find_sumo_binary(sumo_home: Path, gui: bool) -> str:
-    name = "sumo-gui" if gui else "sumo"
-    candidates = [Path(sys.prefix) / "bin" / name, sumo_home / "bin" / name]
+def find_sumo_binary(sumo_home: Path) -> str:
+    """화면이 있는 sumo-gui 실행 파일을 찾는다."""
+    candidates = [Path(sys.prefix) / "bin" / "sumo-gui", sumo_home / "bin" / "sumo-gui"]
     for candidate in candidates:
         if candidate.exists():
             return str(candidate)
-    found = shutil.which(name)
+    found = shutil.which("sumo-gui")
     if found:
         return found
-    raise FileNotFoundError(f"{name} 실행 파일을 찾지 못했습니다.")
+    raise FileNotFoundError("sumo-gui 실행 파일을 찾지 못했습니다.")
 
 
-def parse_tripinfo(path: Path) -> dict[str, float | int]:
-    root = ET.parse(path).getroot()
-    trips = root.findall("tripinfo")
-    waits = [float(trip.attrib["waitingTime"]) for trip in trips]
-    durations = [float(trip.attrib["duration"]) for trip in trips]
-    losses = [float(trip.attrib["timeLoss"]) for trip in trips]
-    return {
-        "arrived_vehicles": len(trips),
-        "average_waiting_time_sec": statistics.fmean(waits) if waits else 0.0,
-        "average_travel_time_sec": statistics.fmean(durations) if durations else 0.0,
-        "average_time_loss_sec": statistics.fmean(losses) if losses else 0.0,
-    }
+def open_gui(config: Path) -> None:
+    """측정 파일을 만들지 않고 SUMO 화면에서 고정신호를 확인한다."""
+    environment = os.environ.copy()
+    if sys.platform == "darwin":
+        xquartz_socket = Path("/tmp/.X11-unix/X0")
+        if not xquartz_socket.exists():
+            raise RuntimeError(
+                "XQuartz가 실행 중이 아닙니다. 먼저 다음 명령을 실행하세요:\n"
+                "open /Applications/Utilities/XQuartz.app"
+            )
+        environment.setdefault("DISPLAY", ":0")
+    subprocess.Popen(
+        [find_sumo_binary(configure_sumo_python()), "-c", str(config)],
+        env=environment,
+        start_new_session=True,
+    )
+    print("SUMO-GUI를 열었습니다. 상단의 실행 버튼을 눌러 차량을 확인하세요.")
 
 
 def parse_args() -> argparse.Namespace:
-    project_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(
-        description="내장 고정신호로 SUMO를 실행하고 기준 성능을 저장합니다."
+        description="내장 고정신호를 공통 평가 코드로 실행합니다."
     )
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=project_root
-        / "data"
-        / "processed"
-        / "20220810_0500"
-        / "scenario.sumocfg",
-    )
+    parser.add_argument("--scenario-dir", type=Path, default=SCENARIO_DIR)
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=project_root / "results" / "fixed_20220810_0500",
+        default=PROJECT_ROOT / "results" / "fixed_20220810_0500",
     )
-    parser.add_argument("--gui", action="store_true", help="SUMO-GUI로 실행")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--gui", action="store_true")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    config = args.config.expanduser().resolve()
+    scenario_dir = args.scenario_dir.expanduser().resolve()
     output_dir = args.output_dir.expanduser().resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
+    config = scenario_dir / "scenario.sumocfg"
     if not config.exists():
         raise FileNotFoundError(
             f"설정 파일이 없습니다: {config}\n먼저 prepare_sumo_scenario.py를 실행하세요."
         )
-
-    sumo_home = configure_sumo_python()
-    sumo_binary = find_sumo_binary(sumo_home, args.gui)
-
     if args.gui:
-        environment = os.environ.copy()
-        if sys.platform == "darwin":
-            xquartz_socket = Path("/tmp/.X11-unix/X0")
-            if not xquartz_socket.exists():
-                raise RuntimeError(
-                    "XQuartz가 실행 중이 아닙니다. 먼저 다음 명령을 실행하세요:\n"
-                    "open /Applications/Utilities/XQuartz.app"
-                )
-            environment.setdefault("DISPLAY", ":0")
-        subprocess.Popen(
-            [sumo_binary, "-c", str(config)],
-            env=environment,
-            start_new_session=True,
-        )
-        print("SUMO-GUI를 열었습니다. 상단의 실행 버튼을 눌러 차량을 확인하세요.")
-        print("GUI 실행은 기존 기준선 결과 파일을 변경하지 않습니다.")
+        open_gui(config)
         return
 
-    import traci  # type: ignore
-
-    tripinfo = output_dir / "tripinfo.xml"
-    summary = output_dir / "summary.xml"
-    statistics_file = output_dir / "statistics.xml"
-    command = [
-        sumo_binary,
-        "-c",
-        str(config),
-        "--tripinfo-output",
-        str(tripinfo),
-        "--summary-output",
-        str(summary),
-        "--statistic-output",
-        str(statistics_file),
-        "--tripinfo-output.write-unfinished",
-        "true",
-        "--no-warnings",
-        "true",
-    ]
-
-    traci.start(command)
-    controlled_lanes = list(dict.fromkeys(traci.trafficlight.getControlledLanes(TARGET_TLS)))
-    if not controlled_lanes:
-        traci.close()
-        raise RuntimeError(f"신호 {TARGET_TLS}의 진입 차로를 찾지 못했습니다.")
-
-    rows: list[dict[str, float | int]] = []
-    try:
-        while traci.simulation.getMinExpectedNumber() > 0:
-            traci.simulationStep()
-            queue = sum(
-                traci.lane.getLastStepHaltingNumber(lane_id)
-                for lane_id in controlled_lanes
-            )
-            rows.append(
-                {
-                    "time_sec": traci.simulation.getTime(),
-                    "queue_vehicles": queue,
-                    "signal_phase": traci.trafficlight.getPhase(TARGET_TLS),
-                }
-            )
-    finally:
-        traci.close()
-
-    step_metrics = output_dir / "step_metrics.csv"
-    with step_metrics.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(
-            handle, fieldnames=["time_sec", "queue_vehicles", "signal_phase"]
-        )
-        writer.writeheader()
-        writer.writerows(rows)
-
-    metrics = parse_tripinfo(tripinfo)
-    metrics["target_tls"] = TARGET_TLS
-    metrics["controlled_lane_count"] = len(controlled_lanes)
-    metrics["max_queue_vehicles"] = max(
-        (int(row["queue_vehicles"]) for row in rows), default=0
+    # 고정신호 전용 계산식을 따로 두지 않고 최종 평가와 정확히 같은 함수를 쓴다.
+    result = run_policy(
+        policy="fixed",
+        evaluation_seed=args.seed,
+        output_dir=output_dir,
+        scenario_dir=scenario_dir,
     )
-    metrics["simulation_steps"] = len(rows)
-
-    metrics_json = output_dir / "baseline_metrics.json"
-    metrics_json.write_text(
-        json.dumps(metrics, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "baseline_metrics.json").write_text(
+        json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
     )
     with (output_dir / "baseline_metrics.csv").open(
         "w", newline="", encoding="utf-8"
     ) as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(metrics))
+        writer = csv.DictWriter(handle, fieldnames=list(result))
         writer.writeheader()
-        writer.writerow(metrics)
-
-    print(json.dumps(metrics, ensure_ascii=False, indent=2))
+        writer.writerow(result)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
     print(f"결과 폴더: {output_dir}")
 
 

@@ -6,8 +6,9 @@ AI Hub의 부천시 교통량과 도로망을 SUMO에 적용하고, DQN으로 �
 - 제어 대상: 신호교차로 `204820`
 - 상태: 현재 신호, 차로 밀도, 대기행렬
 - 행동: 4개 녹색 신호 단계 중 하나 선택
-- 보상: 대기행렬 감소
-- 비교: 고정신호와 DQN의 평균 대기시간, 최대 대기행렬, 통과 차량 수
+- 보상: 현재 대기 차량 수의 음수(`queue`)
+- 신호 조건: 행동 간격 5초, 황색신호 3초
+- 비교: 전체 평균 대기·통행시간, 교차로 차량당 대기시간, 대기행렬, 완료율
 
 ## 프로젝트 흐름
 
@@ -52,7 +53,7 @@ flowchart TD
         DQN["Stable-Baselines3 DQN<br/>교통상태에 맞는 신호 선택"]
         ACTION["행동 0~3<br/>녹색신호 단계 선택"]
         RESULT["SUMO가 차량을 이동시키고<br/>새 교통상태 계산"]
-        REWARD["보상<br/>대기 차량이 적을수록 높은 값"]
+        REWARD["보상<br/>현재 대기 차량 수의 음수"]
 
         ENV --> OBS
         OBS --> DQN
@@ -64,7 +65,7 @@ flowchart TD
     end
 
     DQN --> MODEL["dqn_204820.zip<br/>학습된 신호제어 모델"]
-    DQN --> LOG["training_log.csv<br/>보상과 대기행렬 변화"]
+    DQN --> LOG["monitor.csv · TensorBoard<br/>학습 보상 변화"]
 
     subgraph EVAL["⑤ 최종 평가"]
         TEST["학습에 사용하지 않은<br/>시간대·날짜·시드"]
@@ -94,10 +95,10 @@ CCTV, 개별차량 궤적, OD 데이터는 사용하지 않습니다.
 
 ## 진행 과정
 1. 회전교통량을 SUMO 차량 경로로 변환
-2. 고정신호 시뮬레이션 실행
+2. 회전교통량 누락률 검사
 3. SUMO-RL과 Stable-Baselines3 DQN 연결
-4. 동일한 교통량에서 고정신호와 DQN 비교
-5. 학습에 사용하지 않은 시간대로 평가
+4. 동일한 조건에서 고정신호·무작위·DQN 비교
+5. 학습에 사용하지 않은 날짜로 최종 평가
 
 ## 폴더 구조
 
@@ -132,6 +133,20 @@ AI Hub 회전교통량을 SUMO 차량 경로로 변환하고 실행 설정을 �
 .venv/bin/python src/prepare_sumo_scenario.py
 ```
 
+전처리 결과에는 차종·시간·회전 방향별 원본량, 생성량, 누락량을 기록한
+`data_quality_by_movement.csv`·`.json`과 전체 누락률을 기록한
+`data_quality_summary.json`이 포함됩니다. 누락률이 10%를 넘는 시나리오는
+본 실험에서 제외됩니다.
+
+여러 날짜를 내려받은 뒤에는 전체 시간대를 전처리하고 날짜 단위로 분리합니다.
+
+```bash
+.venv/bin/python src/prepare_all_scenarios.py
+.venv/bin/python src/create_data_splits.py
+```
+
+같은 날짜의 시간대는 모두 같은 분할에 들어가므로 테스트 데이터가 학습에 섞이지 않습니다.
+
 내장 고정신호로 기준 실험을 실행합니다.
 
 ```bash
@@ -158,10 +173,38 @@ SUMO-RL이 `204820` 교차로만 제어할 수 있는지 먼저 확인합니다.
 연결이 확인되면 Stable-Baselines3 DQN을 학습합니다.
 
 ```bash
-.venv/bin/python src/train_dqn.py --timesteps 100000
+.venv/bin/python src/train_dqn.py --seed 42 --timesteps 100000
 ```
 
-학습된 모델과 로그는 `results/dqn_20220810_0500/`에 저장됩니다.
+학습된 모델은 `results/dqn_20220810_0500/seed_42/`에 저장됩니다. 모델은
+10,000단계마다, replay buffer는 50,000단계마다 체크포인트로 저장됩니다.
+5,000단계 시험과 평가가 정상이면 같은 셀의 학습량을 100,000단계로 바꿔
+샘플 예비실험을 다시 실행합니다.
+
+서로 다른 학습 seed 5개를 순서대로 학습할 수도 있습니다.
+
+```bash
+.venv/bin/python src/train_dqn.py --seeds 42 43 44 45 46 --timesteps 100000
+```
+
+여러 날짜의 학습 분할을 사용하려면 `--split-file data/processed/splits.json`을
+추가합니다. 최종 평가는 같은 파일의 `test` 분할을 사용합니다.
+
+```bash
+.venv/bin/python src/train_dqn.py \
+  --seeds 42 43 44 45 46 --timesteps 100000 \
+  --output-dir results/dqn_final \
+  --split-file data/processed/splits.json --split train
+```
+
+Colab이 중단되면 Drive의 같은 단계 모델과 replay buffer를 함께 지정해 이어갑니다.
+
+```bash
+python src/train_dqn.py \
+  --seed 42 --timesteps 50000 \
+  --resume-model /content/drive/MyDrive/FutureTraffic/checkpoints/seed_42/dqn_state_204820_seed42_50000_steps.zip \
+  --resume-replay-buffer /content/drive/MyDrive/FutureTraffic/checkpoints/seed_42/dqn_state_204820_seed42_replay_buffer_50000_steps.pkl
+```
 
 ## Google Colab
 
@@ -174,13 +217,22 @@ Google Drive에 `FutureTraffic/FutureTraffic_colab_data.zip`을 올린 뒤, 노�
 동일한 차량과 실행 조건에서 고정신호·무작위 신호·DQN을 비교합니다.
 
 ```bash
-.venv/bin/python src/evaluate_policies.py --seeds 42
+.venv/bin/python src/evaluate_policies.py \
+  --seeds 42 \
+  --models results/dqn_20220810_0500/seed_42/dqn_204820.zip
 ```
 
 여러 난수값을 반복 평가하려면 다음과 같이 실행합니다.
 
 ```bash
-.venv/bin/python src/evaluate_policies.py --seeds 42 43 44 45 46
+.venv/bin/python src/evaluate_policies.py \
+  --seeds 42 43 44 45 46 \
+  --models \
+    results/dqn_20220810_0500/seed_42/dqn_204820.zip \
+    results/dqn_20220810_0500/seed_43/dqn_204820.zip \
+    results/dqn_20220810_0500/seed_44/dqn_204820.zip \
+    results/dqn_20220810_0500/seed_45/dqn_204820.zip \
+    results/dqn_20220810_0500/seed_46/dqn_204820.zip
 ```
 
 결과는 `results/evaluation_20220810_0500/`에 저장됩니다.
@@ -192,4 +244,11 @@ Google Drive에 `FutureTraffic/FutureTraffic_colab_data.zip`을 올린 뒤, 노�
 
 ## 현재 상태
 
-샘플 회전교통량으로 차량 1,270대를 생성하고 고정신호 SUMO 실행을 확인했습니다. 전 차량이 정상 도착했으며, 신호 `204820`의 평균 대기시간은 약 50.01초, 최대 대기행렬은 21대였습니다. SUMO-RL에서 `204820`만 제어하는 DQN 학습 연결도 확인했습니다.
+샘플 회전교통량으로 차량 1,270대를 생성하고 SUMO 실행을 확인했습니다.
+회전 관측 1,628건 중 103건(6.33%)은 후보 경로로 만들지 못했으며, 10% 기준
+이하이므로 사용하되 연구 한계로 기록합니다.
+대기행렬은 매초 측정하며, 고정신호와 DQN 모두 황색신호 3초를 사용합니다.
+기존 황색 2초·`diff-waiting-time` 보상 모델은 예비 결과로만 보관하고 새 설정으로 다시 학습합니다.
+
+연구 결론은 실제 도로 운행 결과가 아니라 **AI Hub 실제 교통량을 반영한 SUMO
+시뮬레이션에서 DQN이 고정신호보다 혼잡을 줄였는지**로 제한합니다.
