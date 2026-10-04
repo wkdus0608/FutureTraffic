@@ -1,3 +1,8 @@
+
+
+# AI HUB 원본 데이터 -> SUMO 에서 실행할 수 있는 하나의 시나리오로 변환
+
+
 from __future__ import annotations
 
 import argparse
@@ -82,6 +87,7 @@ def run_route_sampler(
     begin: float,
     end: float,
     sumo_home: Path,
+    interval_sec: int = 60,
 ) -> None:
     command = [
         sys.executable,
@@ -103,7 +109,7 @@ def run_route_sampler(
         "--end",
         str(int(end)),
         "--interval",
-        "60",
+        str(interval_sec),
         "--seed",
         "42",
     ]
@@ -185,7 +191,10 @@ def read_mismatch_rows(
             end = float(interval.attrib["end"])
             for relation in interval.findall("edgeRelation"):
                 measured = int(float(relation.attrib.get("measuredCount", "0")))
-                deficit = int(float(relation.attrib.get("deficit", "0")))
+                raw_deficit = int(float(relation.attrib.get("deficit", "0")))
+                # routeSampler는 초과를 음수 deficit으로 쓴다. 부족과 초과를 따로 센다.
+                deficit = max(raw_deficit, 0)
+                overflow = max(-raw_deficit, 0)
                 rows.append(
                     {
                         "vehicle_type": vehicle_type,
@@ -196,8 +205,9 @@ def read_mismatch_rows(
                         "from_edge": relation.attrib["from"],
                         "to_edge": relation.attrib["to"],
                         "original_turn_count": measured,
-                        "generated_turn_count": measured - deficit,
+                        "generated_turn_count": measured - deficit + overflow,
                         "missing_turn_count": deficit,
+                        "overflow_turn_count": overflow,
                         "mismatch_rate": deficit / measured if measured else 0.0,
                         "geh": float(relation.attrib.get("GEH", "0")),
                     }
@@ -240,6 +250,7 @@ def write_data_quality_report(
 
     original_total = sum(int(row["original_turn_count"]) for row in rows)
     missing_total = sum(int(row["missing_turn_count"]) for row in rows)
+    overflow_total = sum(int(row["overflow_turn_count"]) for row in rows)
     mismatch_rate = missing_total / original_total if original_total else 0.0
     status = "usable_with_documented_mismatch"
     if mismatch_rate == 0:
@@ -253,6 +264,12 @@ def write_data_quality_report(
         "original_turn_count": original_total,
         "generated_turn_count": original_total - missing_total,
         "missing_turn_count": missing_total,
+        "overflow_turn_count_in_counted_intervals": overflow_total,
+        "overflow_note": (
+            "routeSampler는 기록이 있는 구간의 초과만 보고한다. 1분 구간에서는 기록이 없는 "
+            "분의 이동이 제한되지 않아, 경로가 관측 방향을 더 많이 지나도 여기 잡히지 않는다. "
+            "results/focused_204820와 docs/최종_진행계획_20261002.md 참고."
+        ),
         "mismatch_rate": mismatch_rate,
         "generated_vehicle_count": generated_vehicle_count,
         "note": (
@@ -288,6 +305,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument(
+        "--interval",
+        type=int,
+        default=60,
+        help="routeSampler 집계 구간(초). 기존 결과 재현용 기본값은 60이며, "
+        "60이면 관측 방향 통과가 크게 늘어나는 문제가 있어 900을 권장합니다.",
+    )
+    parser.add_argument(
         "--max-mismatch-rate",
         type=float,
         default=DEFAULT_MAX_MISMATCH_RATE,
@@ -308,6 +332,7 @@ def main() -> None:
     intermediate_dir = output_dir / "intermediate"
     intermediate_dir.mkdir(parents=True, exist_ok=True)
 
+    # 도로망·후보 경로·차종 정의·네 차종 교통량 파일을 찾는다.
     network = find_one(sample_root, "1200012n.net.xml")
     possible_routes = find_one(sample_root, "possible_routes.rou.xml")
     vehicle_types_file = find_one(sample_root, "exp.rou.xml")
@@ -317,11 +342,17 @@ def main() -> None:
     }
 
     begin, end = read_time_range(list(turn_files.values()))
+    if args.interval < 900:
+        print(
+            f"경고: --interval {args.interval}초는 차량 경로가 관측 방향을 실제보다 많이 지나게 "
+            "만들 수 있습니다(2022-08-10 05:00 예: 관측 1,628건 → 경로 3,178회). 900을 권장합니다."
+        )
     sumo_home = find_sumo_home()
     route_sampler = sumo_home / "tools" / "routeSampler.py"
     if not route_sampler.exists():
         raise FileNotFoundError(f"routeSampler.py를 찾지 못했습니다: {route_sampler}")
 
+    # 차종별로 routeSampler를 실행한 뒤 하나의 route 파일로 합친다.
     sampled_files: list[Path] = []
     mismatch_files: dict[str, Path] = {}
     for code, (vehicle_type, prefix) in VEHICLE_TYPES.items():
@@ -339,10 +370,12 @@ def main() -> None:
             begin=begin,
             end=end,
             sumo_home=sumo_home,
+            interval_sec=args.interval,
         )
         sampled_files.append(sampled)
         mismatch_files[vehicle_type] = mismatch
 
+    # SUMO가 바로 읽을 최종 파일과 실행 설정을 만든다.
     route_file = output_dir / f"traffic_{scenario_id}.rou.xml"
     vehicle_count = merge_and_rebase_routes(
         vehicle_types_file, sampled_files, route_file, begin
@@ -351,6 +384,7 @@ def main() -> None:
     # 15분 수요가 끝난 뒤 차량이 빠져나갈 15분을 추가한다.
     simulation_duration_sec = max(1800, int(end - begin) + 900)
     config = write_config(output_dir, route_file.name, simulation_duration_sec)
+    # 원본 회전교통량과 생성 경로의 차이를 보고하고, 누락률이 높으면 제외한다.
     quality = write_data_quality_report(
         output_dir=output_dir,
         mismatch_files=mismatch_files,

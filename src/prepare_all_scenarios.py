@@ -1,3 +1,5 @@
+"""Sample 전체의 회전교통량 시간대를 SUMO 시나리오로 일괄 변환한다."""
+
 from __future__ import annotations
 
 import argparse
@@ -17,6 +19,10 @@ except ModuleNotFoundError:
 
 
 VEHICLE_CODES = {"p", "b", "t", "m"}
+# AI Hub 파일명 앞 6자리는 자료 묶음이다. 900012 = 부천 교차로_all(도로망 전체).
+# 101xx(단독 교차로)·301xx(일부 묶음) 파일은 한두 교차로의 기록만 있어
+# 도로망 전체 시나리오로 쓰면 안 되고, 날짜·시각이 같아 출력 폴더도 겹친다.
+ALL_INTERSECTIONS_PREFIX = "900012"
 
 
 def discover_complete_prefixes(sample_root: Path) -> list[str]:
@@ -25,9 +31,15 @@ def discover_complete_prefixes(sample_root: Path) -> list[str]:
     pattern = re.compile(r"^(.*)([pbtm])\.xml$")
     for path in sample_root.rglob("*.xml"):
         match = pattern.match(path.name)
-        if match and re.search(r"\d{14}$", match.group(1)):
+        if (match and re.search(r"\d{14}$", match.group(1))
+                and match.group(1).startswith(ALL_INTERSECTIONS_PREFIX)):
             found[match.group(1)].add(match.group(2))
-    return sorted(prefix for prefix, codes in found.items() if codes == VEHICLE_CODES)
+    prefixes = sorted(prefix for prefix, codes in found.items() if codes == VEHICLE_CODES)
+    scenario_ids = [scenario_id_from_prefix(prefix) for prefix in prefixes]
+    duplicates = {s for s in scenario_ids if scenario_ids.count(s) > 1}
+    if duplicates:
+        raise ValueError(f"같은 시나리오 ID가 여러 파일에서 나왔습니다: {sorted(duplicates)[:5]}")
+    return prefixes
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,12 +63,14 @@ def main() -> None:
     args = parse_args()
     sample_root = args.sample_root.expanduser().resolve()
     processed_root = args.processed_root.expanduser().resolve()
+    # 네 차종 파일이 모두 있는 시간대만 처리 대상으로 선택한다.
     prefixes = discover_complete_prefixes(sample_root)
     if args.limit is not None:
         prefixes = prefixes[: args.limit]
     if not prefixes:
         raise FileNotFoundError("p·b·t·m 파일이 모두 있는 시간대를 찾지 못했습니다.")
 
+    # 실제 시나리오 생성은 단일 처리 스크립트에 맡기고, 이 파일은 반복만 담당한다.
     worker = Path(__file__).with_name("prepare_sumo_scenario.py")
     records: list[dict[str, str | int]] = []
     for index, prefix in enumerate(prefixes, start=1):
@@ -83,6 +97,7 @@ def main() -> None:
             }
         )
 
+    # 전체 시간대의 성공,실패 결과를 한 파일에 남긴다.
     manifest = {
         "discovered_complete_scenarios": len(prefixes),
         "prepared_scenarios": sum(row["return_code"] == 0 for row in records),

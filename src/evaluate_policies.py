@@ -1,3 +1,5 @@
+"""고정·무작위·DQN 정책을 같은 SUMO 조건에서 비교한다."""
+
 from __future__ import annotations
 
 import argparse
@@ -152,6 +154,7 @@ def run_policy(
     run_dir = output_dir / "runs" / scenario_id / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
     sumo_command, tripinfo_path, statistics_path = make_sumo_output_command(run_dir)
+    # 세 정책은 행동 선택 방식만 다르고 같은 환경 설정을 사용한다.
     env = make_environment(
         seed=evaluation_seed,
         fixed_ts=policy == "fixed",
@@ -236,6 +239,7 @@ def run_policy(
     ]
     write_csv(run_dir / "local_vehicle_waiting.csv", local_vehicle_rows)
 
+    # 1초 대기행렬 기록으로 교차로 차량당 대기시간을 계산한다.
     queues = [float(row["local_queue_vehicles"]) for row in queue_rows]
     queue_vehicle_seconds = sum(queues) * QUEUE_MEASUREMENT_INTERVAL_SEC
     id_based_wait_seconds = float(sum(env.local_vehicle_wait_seconds.values()))
@@ -274,6 +278,13 @@ def run_policy(
         "total_reward": total_reward,
         "local_observed_vehicles": local_vehicle_count,
         "local_passed_vehicles": local_passed_vehicle_count,
+        # 실제로 교차로를 건넌 횟수(같은 차량이 두 번 건너면 2회). 진입 차로에서
+        # 주행을 끝낸 차량은 포함하지 않는다. 아래 1회당 대기 지표의 분모다.
+        "local_crossings": len(env.local_crossings),
+        "local_unverified_arrivals": len(env.local_unverified_arrivals),
+        "local_mean_waiting_time_per_crossing_sec": (
+            queue_vehicle_seconds / len(env.local_crossings) if env.local_crossings else None
+        ),
         "local_remaining_observed_vehicles": local_remaining_vehicle_count,
         # 요청한 교차로 차량당 대기는 정지 차량·초를 실제 통과 차량 수로 나눈다.
         # 통과 차량이 0대인 비정상 실행에서는 평균을 0으로 꾸미지 않고 null로 둔다.
@@ -526,6 +537,7 @@ def main() -> None:
     scenario_dirs = load_scenario_dirs(args)
     model_specs = load_models(args.models) if "dqn" in args.policies else []
 
+    # 시나리오·정책·seed 조합마다 독립 실행을 만들고 결과를 모은다.
     results: list[dict[str, Any]] = []
     for scenario_dir in scenario_dirs:
         for policy in args.policies:
@@ -544,6 +556,7 @@ def main() -> None:
                         f"완료율 {result['completion_rate'] * 100:.2f}%"
                     )
 
+    # 개별 실행, 정책별 요약, 사람이 읽는 보고서를 함께 저장한다.
     write_csv(output_dir / "runs.csv", results)
     summaries = summarize_by_policy(results)
     write_csv(output_dir / "summary_by_policy.csv", summaries)

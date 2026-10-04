@@ -1,3 +1,5 @@
+"""전처리된 시나리오를 날짜 단위로 학습·검증·테스트에 나눈다."""
+
 from __future__ import annotations
 
 import argparse
@@ -58,6 +60,7 @@ def main() -> None:
         else processed_root / "splits.json"
     )
 
+    # 품질 기준을 통과한 시나리오만 분할 대상으로 모은다.
     scenarios: list[tuple[Path, dict[str, object]]] = []
     for metadata_path in sorted(processed_root.glob("*/scenario_metadata.json")):
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
@@ -65,6 +68,7 @@ def main() -> None:
             continue
         scenarios.append((metadata_path.parent, metadata))
 
+    # 시간대가 아니라 날짜를 기준으로 나눠 같은 날의 정보가 섞이지 않게 한다.
     dates = sorted({str(metadata["source_date"]) for _, metadata in scenarios})
     date_splits = split_dates(dates, args.seed)
     split_rows: dict[str, list[str]] = {name: [] for name in date_splits}
@@ -77,6 +81,7 @@ def main() -> None:
                 )
                 break
 
+    # 이후 학습·평가 스크립트가 재사용할 수 있도록 분할 결과를 저장한다.
     payload = {
         "version": 1,
         "split_unit": "calendar_date",

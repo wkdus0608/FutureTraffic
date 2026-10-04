@@ -1,3 +1,5 @@
+"""SUMO 환경에서 Stable-Baselines3 DQN을 학습하는 스크립트."""
+
 from __future__ import annotations
 
 import argparse
@@ -31,7 +33,8 @@ class CyclingScenarioEnv(gym.Env):
         self.scenario_dirs = scenario_dirs
         self.base_seed = seed
         self.episode = 0
-        self.scenario_index = 0
+        self.rng = __import__("random").Random(seed)
+        self.scenario_index = self.rng.randrange(len(scenario_dirs))
         self.current_env = make_environment(
             seed=seed, scenario_dir=self.scenario_dirs[self.scenario_index]
         )
@@ -44,7 +47,9 @@ class CyclingScenarioEnv(gym.Env):
         if self.started:
             self.current_env.close()
             self.episode += 1
-            self.scenario_index = self.episode % len(self.scenario_dirs)
+            # 이름 순서로 돌리면 날짜가 많을 때 앞쪽 날짜·새벽만 학습한다.
+            # 시드를 고정한 무작위 추출로 모든 날짜·시간대를 고르게 경험하게 한다.
+            self.scenario_index = self.rng.randrange(len(self.scenario_dirs))
             self.current_env = make_environment(
                 seed=self.base_seed + self.episode,
                 scenario_dir=self.scenario_dirs[self.scenario_index],
@@ -139,6 +144,7 @@ def train_one_seed(
     checkpoint_dir = checkpoint_root / f"seed_{seed}"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
+    # 시나리오가 여러 개면 에피소드마다 다른 시간대 환경을 사용한다.
     env = build_environment(scenario_dirs, seed)
     monitored_env = Monitor(env, filename=str(output_dir / "monitor.csv"))
     tensorboard_dir = output_dir / "tensorboard"
@@ -148,6 +154,7 @@ def train_one_seed(
         args.resume_replay_buffer.expanduser().resolve()
         if args.resume_replay_buffer else None
     )
+    # 체크포인트가 있으면 같은 환경 설정인지 확인한 뒤 이어 학습한다.
     if resume_model:
         previous_config = validate_resume_model(resume_model, scenario_dirs)
         if int(previous_config["seed"]) != seed:
@@ -214,6 +221,7 @@ def train_one_seed(
             encoding="utf-8",
         )
 
+    # 모델과 replay buffer를 서로 다른 주기로 저장해 Colab 중단에 대비한다.
     model_checkpoints = CheckpointCallback(
         save_freq=args.model_checkpoint_freq,
         save_path=str(checkpoint_dir),
@@ -296,6 +304,7 @@ def main() -> None:
     if args.model_checkpoint_freq <= 0 or args.replay_checkpoint_freq <= 0:
         raise ValueError("체크포인트 간격은 1 이상이어야 합니다.")
 
+    # 명시한 폴더 또는 날짜 분할 파일에서 학습 시나리오를 결정한다.
     scenario_dirs = load_scenario_dirs(args)
     for seed in seeds:
         print(f"\n=== 학습 seed {seed} 시작 ===")

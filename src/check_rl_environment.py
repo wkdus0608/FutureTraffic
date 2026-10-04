@@ -1,3 +1,5 @@
+"""SUMO-RL 환경이 정상적으로 연결되는지 짧게 확인하는 검사 스크립트."""
+
 from __future__ import annotations
 
 import argparse
@@ -14,12 +16,15 @@ from rl_environment import (
 
 
 def main() -> None:
+    # 학습 전에 대상 신호, 관측·행동 공간, 보상 연결을 빠르게 점검한다.
     parser = argparse.ArgumentParser(description="SUMO-RL 환경을 짧게 실행해 연결을 확인합니다.")
     parser.add_argument("--steps", type=int, default=10)
     parser.add_argument("--scenario-dir", type=Path, default=SCENARIO_DIR)
     args = parser.parse_args()
 
     scenario_dir = args.scenario_dir.expanduser().resolve()
+
+    # 도로망에 실제 제어 대상 신호가 있고 황색시간이 설정과 같은지 확인한다.
     network_root = ET.parse(scenario_dir / "network.net.xml").getroot()
     logic = network_root.find(f"tlLogic[@id='{TARGET_TLS}']")
     if logic is None:
@@ -30,6 +35,7 @@ def main() -> None:
         if "y" in phase.attrib["state"]
     }
 
+    # 환경을 시작한 뒤 무작위 행동으로 몇 단계만 실행한다. DQN 학습은 하지 않는다.
     env = make_environment(seed=42, scenario_dir=scenario_dir)
     try:
         obs, info = env.reset(seed=42)

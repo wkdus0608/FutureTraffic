@@ -1,3 +1,5 @@
+"""SUMO-RL 환경을 프로젝트 규칙에 맞게 생성하는 공통 모듈."""
+
 from __future__ import annotations
 
 import json
@@ -77,6 +79,17 @@ def make_environment(
     additional_sumo_cmd: str | None = None,
     record_per_second_queue: bool = False,
     scenario_dir: Path | None = None,
+    net_file: Path | None = None,
+    route_file: Path | None = None,
+    simulation_duration_sec: int | None = None,
+    observation_class=None,
+    reward_fn=None,
+    extra_queue_edges: list[str] | None = None,
+    light_info: bool = False,
+    min_green: int = 5,
+    max_green: int = 50,
+    record_vehicle_details: bool = True,
+    yellow_time: int = YELLOW_TIME_SEC,
 ):
     """학습과 평가에서 공통으로 사용하는 SUMO-RL 환경을 만든다.
 
@@ -91,7 +104,21 @@ def make_environment(
     scenario_dir:
         도로망과 차량 경로가 들어 있는 폴더이다. 생략하면 현재 샘플 시간대인
         ``20220810_0500``을 사용한다. 이후 다른 날짜도 같은 형식으로 넣을 수 있다.
+    net_file, route_file, simulation_duration_sec:
+        시나리오 폴더 대신 지도·차량 파일과 실행시간을 직접 지정한다.
+        석천사거리 중심 실험(focused_experiment.py)에서 사용한다.
+    observation_class, reward_fn:
+        SUMO-RL 기본 관측·보상 대신 쓸 정의. 생략하면 기존과 같다.
+    extra_queue_edges:
+        평가할 때 매초 정지 차량을 추가로 셀 도로 목록(예: 상류 150m 감지 구간).
+    light_info:
+        True이면 SUMO-RL이 매 판단마다 전체 차량을 조회해 만드는 기록용 정보를 끈다.
+        학습·평가 결과에는 영향이 없고 속도만 빨라진다.
+    record_vehicle_details:
+        False이면 매초 기록에서 차량 단위 조회(차량 ID·속도·건넘 판정)를 생략하고
+        대기열 수와 신호 상태만 남긴다. 차량별 지표를 SUMO 출력 파일에서 계산할 때 쓴다.
     """
+    # SUMO-RL을 불러오기 전에 SUMO_HOME과 실행 경로를 준비한다.
     configure_sumo()
     from sumo_rl import SumoEnvironment
 
@@ -113,22 +140,48 @@ def make_environment(
             self.local_vehicle_ids: set[str] = set()
             self.local_passed_vehicle_ids: set[str] = set()
             self.local_vehicle_wait_seconds: dict[str, int] = {}
+            # 교차로를 실제로 건넌 사건(시각, 차량)이다. 진입 차로를 떠난 차량이
+            # 교차로 내부 차로나 진출 도로에서 확인될 때만 1회로 센다.
+            # 같은 차량이 두 번 건너면 두 번 센다.
+            self.local_crossings: list[tuple[float, str]] = []
+            # 진입 차로에서 곧바로 주행을 끝낸 차량(교차로를 건넜는지 확인 불가)이다.
+            self.local_unverified_arrivals: list[tuple[float, str]] = []
+            self._previous_approaching: set[str] = set()
             super().__init__(*args, **kwargs)
 
+        # 새 시뮬레이션 시작
         def reset(self, *args, **kwargs):
             # 새로운 평가 실행이 시작되면 이전 실행의 기록을 비운다.
             self.per_second_queue_records.clear()
             self.local_vehicle_ids.clear()
             self.local_passed_vehicle_ids.clear()
             self.local_vehicle_wait_seconds.clear()
+            self.local_crossings.clear()
+            self.local_unverified_arrivals.clear()
+            self._previous_approaching = set()
             return super().reset(*args, **kwargs)
 
         def _sumo_step(self) -> None:
             # 부모 클래스가 차량을 정확히 1초 이동시키고 출발·도착 수를 갱신한다.
             super()._sumo_step()
 
-            # 제어 교차로로 들어오는 20개 차로의 차량 ID를 중복 없이 모은다.
             traffic_signal = self.traffic_signals[TARGET_TLS]
+            if not record_vehicle_details:
+                self.per_second_queue_records.append(
+                    {
+                        "simulation_time_sec": float(self.sim_step),
+                        "local_queue_vehicles": int(traffic_signal.get_total_queued()),
+                        "tls_state": self.sumo.trafficlight.getRedYellowGreenState(TARGET_TLS),
+                        "zone_queue_vehicles": (
+                            sum(self.sumo.edge.getLastStepHaltingNumber(edge) for edge in extra_queue_edges)
+                            if extra_queue_edges else None
+                        ),
+                        # 출발 시각이 지났지만 대기열 때문에 도로에 들어오지 못한 차량 수
+                        "pending_vehicles": len(self.sumo.simulation.getPendingVehicles()),
+                    }
+                )
+                return
+            # 제어 교차로로 들어오는 20개 차로의 차량 ID를 중복 없이 모은다.
             approaching_ids: set[str] = set()
             outgoing_ids: set[str] = set()
             queued_ids: set[str] = set()
@@ -151,6 +204,17 @@ def make_environment(
             arrived_ids = set(self.sumo.simulation.getArrivedIDList())
             passed_now = (outgoing_ids | arrived_ids) & self.local_vehicle_ids
             self.local_passed_vehicle_ids.update(passed_now)
+            # 교차로 건넘 판정: 직전 초에 진입 차로에 있던 차량이 이번 초에 진입 차로를
+            # 떠났으면, 현재 위치가 교차로 내부 차로 또는 진입 도로가 아닌 곳일 때 건넌 것으로 본다.
+            incoming_edges = {lane.rsplit("_", 1)[0] for lane in traffic_signal.lanes}
+            for vehicle_id in self._previous_approaching - approaching_ids:
+                if vehicle_id in arrived_ids:
+                    self.local_unverified_arrivals.append((float(self.sim_step), vehicle_id))
+                    continue
+                road = self.sumo.vehicle.getRoadID(vehicle_id)
+                if road.startswith(":") or road not in incoming_edges:
+                    self.local_crossings.append((float(self.sim_step), vehicle_id))
+            self._previous_approaching = approaching_ids
             for vehicle_id in queued_ids:
                 self.local_vehicle_wait_seconds[vehicle_id] = (
                     self.local_vehicle_wait_seconds.get(vehicle_id, 0)
@@ -163,6 +227,11 @@ def make_environment(
                 {
                     "simulation_time_sec": float(self.sim_step),
                     "local_queue_vehicles": int(traffic_signal.get_total_queued()),
+                    "tls_state": self.sumo.trafficlight.getRedYellowGreenState(TARGET_TLS),
+                    "zone_queue_vehicles": (
+                        sum(self.sumo.edge.getLastStepHaltingNumber(edge) for edge in extra_queue_edges)
+                        if extra_queue_edges else None
+                    ),
                     "local_approaching_vehicles": len(approaching_ids),
                     "local_passed_vehicles_cumulative": len(
                         self.local_passed_vehicle_ids
@@ -173,10 +242,16 @@ def make_environment(
                 }
             )
 
-    selected_scenario_dir = (scenario_dir or SCENARIO_DIR).expanduser().resolve()
-    net_file = selected_scenario_dir / "network.net.xml"
-    route_file = find_route_file(selected_scenario_dir)
-    simulation_duration_sec = read_simulation_duration(selected_scenario_dir)
+    # 선택한 시나리오의 도로망·차량 경로를 확인한다.
+    if net_file is not None and route_file is not None:
+        net_file = Path(net_file).expanduser().resolve()
+        route_file = Path(route_file).expanduser().resolve()
+        simulation_duration_sec = simulation_duration_sec or SIMULATION_DURATION_SEC
+    else:
+        selected_scenario_dir = (scenario_dir or SCENARIO_DIR).expanduser().resolve()
+        net_file = selected_scenario_dir / "network.net.xml"
+        route_file = find_route_file(selected_scenario_dir)
+        simulation_duration_sec = read_simulation_duration(selected_scenario_dir)
     for path in (net_file, route_file):
         if not path.exists():
             raise FileNotFoundError(
@@ -190,7 +265,14 @@ def make_environment(
         PerSecondQueueEnvironment if record_per_second_queue else SumoEnvironment
     )
 
+    # ts_ids에 하나의 신호만 넣어 204820만 DQN의 제어 대상으로 만든다.
+    overrides = {}
+    if light_info:
+        overrides.update(add_system_info=False, add_per_agent_info=False)
+    if observation_class is not None:
+        overrides["observation_class"] = observation_class
     return environment_class(
+        **overrides,
         net_file=str(net_file),
         route_file=str(route_file),
         out_csv_name=str(output_prefix) if output_prefix else None,
@@ -199,11 +281,11 @@ def make_environment(
         use_gui=use_gui,
         num_seconds=simulation_duration_sec,
         delta_time=ACTION_INTERVAL_SEC,
-        yellow_time=YELLOW_TIME_SEC,
-        min_green=5,
-        max_green=50,
+        yellow_time=yellow_time,
+        min_green=min_green,
+        max_green=max_green,
         enforce_max_green=True,
-        reward_fn=REWARD_FUNCTION,
+        reward_fn=reward_fn or REWARD_FUNCTION,
         sumo_seed=seed,
         fixed_ts=fixed_ts,
         sumo_warnings=False,

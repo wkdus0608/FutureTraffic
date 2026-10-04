@@ -1,3 +1,5 @@
+"""도로망의 고정신호를 실행해 기준선 성능을 측정하는 스크립트."""
+
 from __future__ import annotations
 
 import argparse
@@ -82,10 +84,12 @@ def main() -> None:
         raise FileNotFoundError(
             f"설정 파일이 없습니다: {config}\n먼저 prepare_sumo_scenario.py를 실행하세요."
         )
+    # GUI 모드에서는 수치 평가 없이 도로·차량·신호의 작동만 눈으로 확인한다.
     if args.gui:
         open_gui(config)
         return
 
+    # 일반 모드에서는 DQN 평가와 같은 공통 함수로 고정신호를 측정한다.
     # 고정신호 전용 계산식을 따로 두지 않고 최종 평가와 정확히 같은 함수를 쓴다.
     result = run_policy(
         policy="fixed",
