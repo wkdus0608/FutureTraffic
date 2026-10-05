@@ -105,6 +105,33 @@ class NetworkChecks(unittest.TestCase):
         r=self.changed_report(lambda n:n.find('connection').set('via','missing'))
         self.assertIn('invalid_connection_reference',{x['type'] for x in r['structural_errors']})
 
+    def internal_duplicate_index_report(self, invalid_ordinal=False):
+        def modify(n):
+            a=n.find('edge'); ET.SubElement(a,'lane',id='a_1',index='1',speed='10',length='100')
+            b=next(e for e in n.findall('edge') if e.get('id')=='b')
+            ET.SubElement(b,'lane',id='b_1',index='1',speed='10',length='100')
+            internal=next(e for e in n.findall('edge') if e.get('id')==':j_0')
+            ET.SubElement(internal,'lane',id=':j_0_1',index='0',speed='10',length='10')
+            ET.SubElement(n,'connection',{'from':'477610475_01','to':'b','fromLane':'1','toLane':'1','via':':j_0_1'})
+            ET.SubElement(n,'connection',{'from':':j_0','to':'b','fromLane':'2' if invalid_ordinal else '1','toLane':'1'})
+            for j in n.findall('junction'):
+                if j.get('id')=='junction':j.set('incLanes','a_0 a_1');j.set('intLanes',':j_0_0 :j_0_1')
+                if j.get('id')=='exit':j.set('incLanes','b_0 b_1')
+        return self.changed_report(modify)
+
+    def test_duplicate_internal_lane_index_metadata_is_review_only(self):
+        r=self.internal_duplicate_index_report()
+        self.assertEqual(r['structural_errors'],[])
+        mismatch=[x for x in r['review_findings'] if x['type']=='lane_index_metadata_mismatch']
+        self.assertEqual(len(mismatch),1)
+        self.assertEqual(mismatch[0]['declared_index'],'0')
+        self.assertEqual(mismatch[0]['runtime_ordinal'],1)
+
+    def test_true_out_of_range_internal_lane_still_fails(self):
+        r=self.internal_duplicate_index_report(invalid_ordinal=True)
+        self.assertTrue(any(x['type']=='invalid_connection_reference' and x.get('field')=='from_lane'
+                            for x in r['structural_errors']))
+
     def test_bad_signal_index(self):
         def modify(n):next(c for c in n.findall('connection') if c.get('tl')).set('linkIndex','9999')
         r=self.changed_report(modify)

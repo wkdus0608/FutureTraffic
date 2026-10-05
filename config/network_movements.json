@@ -1,0 +1,1708 @@
+{
+  "schema_version": 1,
+  "description": "Complete-network raw-to-semantic movement definitions; connectivity facts separated from observation remapping assumptions.",
+  "original_network_sha256": "c041e7ccf0c389ea60425a5916ba36e3c89838177ce61b2ddf1d6229cf67223d",
+  "default_variant": "conservative",
+  "variants": {
+    "conservative": {
+      "description": "Assumed ID and complete bypass correspondence; central turns and U-turn remain unresolved",
+      "learning_ready": false
+    },
+    "uturn_as_straight": {
+      "description": "Separate sensitivity hypothesis for raw U-turn counts; central turns remain unresolved",
+      "learning_ready": false
+    },
+    "central_assumed_embedded": {
+      "description": "Separate netconvert-restored central turns under embedded timing assumptions; U-turn remains unresolved",
+      "learning_ready": false
+    },
+    "central_assumed_embedded_uturn_as_straight": {
+      "description": "Combined assumption variant; not certified as historical reconstruction",
+      "learning_ready": false
+    }
+  },
+  "rules": {
+    "raw_counts_are_passages_not_unique_vehicles": true,
+    "unresolved_counts_stay_in_raw_denominator": true,
+    "absent_record_is_not_certified_zero": true,
+    "bypass_count_requires_complete_contiguous_path": true,
+    "historical_signal_width_does_not_identify_missing_turn_columns": true,
+    "supplement_junctions_are_not_certified_measured": [
+      "201330",
+      "201329",
+      "201300"
+    ]
+  },
+  "inventory_source": {
+    "file": "results/codex_design_audit_20261005/demand/full_network_demand_audit.json",
+    "definition": "162 positive raw movements across 7296 CRC/SHA-verified XML files and 19 supplied dates; sample weights independently read from original 20220810 05:00 four-class files",
+    "all_19_day_total": 13336507,
+    "sample_total": 1628,
+    "sample_raw_map_candidate_gap": 103
+  },
+  "inventory": [
+    {
+      "id": "raw_477603993_02_01__477604193_02",
+      "source_from": "477603993_02_01",
+      "source_to": "477604193_02",
+      "junction": "201293",
+      "all_19_day_count": 39429,
+      "sample_20220810_0500_count": 1
+    },
+    {
+      "id": "raw_477603993_02_01__477649578_010101_01",
+      "source_from": "477603993_02_01",
+      "source_to": "477649578_010101_01",
+      "junction": "201293",
+      "all_19_day_count": 31524,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477603993_02_01__477670332_02",
+      "source_from": "477603993_02_01",
+      "source_to": "477670332_02",
+      "junction": "201293",
+      "all_19_day_count": 50646,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477604020_02__477604628_01",
+      "source_from": "477604020_02",
+      "source_to": "477604628_01",
+      "junction": "201329",
+      "all_19_day_count": 44613,
+      "sample_20220810_0500_count": 9
+    },
+    {
+      "id": "raw_477604020_02__477604635_01",
+      "source_from": "477604020_02",
+      "source_to": "477604635_01",
+      "junction": "201329",
+      "all_19_day_count": 32110,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477604020_02__477610040_01_01",
+      "source_from": "477604020_02",
+      "source_to": "477610040_01_01",
+      "junction": "201329",
+      "all_19_day_count": 113829,
+      "sample_20220810_0500_count": 13
+    },
+    {
+      "id": "raw_477604193_01__477603993_02_02",
+      "source_from": "477604193_01",
+      "source_to": "477603993_02_02",
+      "junction": "201293",
+      "all_19_day_count": 20259,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477604193_01__477649578_010101_01",
+      "source_from": "477604193_01",
+      "source_to": "477649578_010101_01",
+      "junction": "201293",
+      "all_19_day_count": 132354,
+      "sample_20220810_0500_count": 13
+    },
+    {
+      "id": "raw_477604193_01__477670332_02",
+      "source_from": "477604193_01",
+      "source_to": "477670332_02",
+      "junction": "201293",
+      "all_19_day_count": 28706,
+      "sample_20220810_0500_count": 5
+    },
+    {
+      "id": "raw_477604248_0202_01__477604732_02",
+      "source_from": "477604248_0202_01",
+      "source_to": "477604732_02",
+      "junction": "201292",
+      "all_19_day_count": 19042,
+      "sample_20220810_0500_count": 1
+    },
+    {
+      "id": "raw_477604248_0202_01__477604827_010101_01",
+      "source_from": "477604248_0202_01",
+      "source_to": "477604827_010101_01",
+      "junction": "201292",
+      "all_19_day_count": 17447,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477604248_0202_01__477649508_01_01",
+      "source_from": "477604248_0202_01",
+      "source_to": "477649508_01_01",
+      "junction": "201292",
+      "all_19_day_count": 61764,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477604628_02__477604020_01",
+      "source_from": "477604628_02",
+      "source_to": "477604020_01",
+      "junction": "201329",
+      "all_19_day_count": 36062,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477604628_02__477604628_01",
+      "source_from": "477604628_02",
+      "source_to": "477604628_01",
+      "junction": "201329",
+      "all_19_day_count": 596,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477604628_02__477604635_01",
+      "source_from": "477604628_02",
+      "source_to": "477604635_01",
+      "junction": "201329",
+      "all_19_day_count": 172620,
+      "sample_20220810_0500_count": 26
+    },
+    {
+      "id": "raw_477604628_02__477610040_01_01",
+      "source_from": "477604628_02",
+      "source_to": "477610040_01_01",
+      "junction": "201329",
+      "all_19_day_count": 39767,
+      "sample_20220810_0500_count": 4
+    },
+    {
+      "id": "raw_477604635_02__477604020_01",
+      "source_from": "477604635_02",
+      "source_to": "477604020_01",
+      "junction": "201329",
+      "all_19_day_count": 30758,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477604635_02__477604628_01",
+      "source_from": "477604635_02",
+      "source_to": "477604628_01",
+      "junction": "201329",
+      "all_19_day_count": 118061,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477604635_02__477604635_01",
+      "source_from": "477604635_02",
+      "source_to": "477604635_01",
+      "junction": "201329",
+      "all_19_day_count": 8157,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477604635_02__477610040_01_01",
+      "source_from": "477604635_02",
+      "source_to": "477610040_01_01",
+      "junction": "201329",
+      "all_19_day_count": 34107,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477604732_01__477604248_0202_02",
+      "source_from": "477604732_01",
+      "source_to": "477604248_0202_02",
+      "junction": "201292",
+      "all_19_day_count": 20479,
+      "sample_20220810_0500_count": 1
+    },
+    {
+      "id": "raw_477604732_01__477604827_010101_01",
+      "source_from": "477604732_01",
+      "source_to": "477604827_010101_01",
+      "junction": "201292",
+      "all_19_day_count": 88498,
+      "sample_20220810_0500_count": 12
+    },
+    {
+      "id": "raw_477604732_01__477649508_01_01",
+      "source_from": "477604732_01",
+      "source_to": "477649508_01_01",
+      "junction": "201292",
+      "all_19_day_count": 29921,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477604809_02__477604809_01",
+      "source_from": "477604809_02",
+      "source_to": "477604809_01",
+      "junction": "201300",
+      "all_19_day_count": 7072,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477604809_02__477610002_01",
+      "source_from": "477604809_02",
+      "source_to": "477610002_01",
+      "junction": "201300",
+      "all_19_day_count": 54106,
+      "sample_20220810_0500_count": 9
+    },
+    {
+      "id": "raw_477604809_02__477610053_02020202_02",
+      "source_from": "477604809_02",
+      "source_to": "477610053_02020202_02",
+      "junction": "201300",
+      "all_19_day_count": 21276,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477604809_02__477660958_01",
+      "source_from": "477604809_02",
+      "source_to": "477660958_01",
+      "junction": "201300",
+      "all_19_day_count": 177355,
+      "sample_20220810_0500_count": 37
+    },
+    {
+      "id": "raw_477604827_010101_02__477604248_0202_02",
+      "source_from": "477604827_010101_02",
+      "source_to": "477604248_0202_02",
+      "junction": "201292",
+      "all_19_day_count": 38245,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477604827_010101_02__477604732_02",
+      "source_from": "477604827_010101_02",
+      "source_to": "477604732_02",
+      "junction": "201292",
+      "all_19_day_count": 82518,
+      "sample_20220810_0500_count": 8
+    },
+    {
+      "id": "raw_477604827_010101_02__477649508_01_01",
+      "source_from": "477604827_010101_02",
+      "source_to": "477649508_01_01",
+      "junction": "201292",
+      "all_19_day_count": 17718,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477604827_02_01__477649509_01",
+      "source_from": "477604827_02_01",
+      "source_to": "477649509_01",
+      "junction": "201301",
+      "all_19_day_count": 29714,
+      "sample_20220810_0500_count": 4
+    },
+    {
+      "id": "raw_477604827_02_01__477649559_01",
+      "source_from": "477604827_02_01",
+      "source_to": "477649559_01",
+      "junction": "201301",
+      "all_19_day_count": 15795,
+      "sample_20220810_0500_count": 1
+    },
+    {
+      "id": "raw_477604827_02_01__477649571_010101_01",
+      "source_from": "477604827_02_01",
+      "source_to": "477649571_010101_01",
+      "junction": "201301",
+      "all_19_day_count": 115045,
+      "sample_20220810_0500_count": 19
+    },
+    {
+      "id": "raw_477605406_02__477605406_01",
+      "source_from": "477605406_02",
+      "source_to": "477605406_01",
+      "junction": "204920",
+      "all_19_day_count": 2323,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477605406_02__477656848_01",
+      "source_from": "477605406_02",
+      "source_to": "477656848_01",
+      "junction": "204920",
+      "all_19_day_count": 42085,
+      "sample_20220810_0500_count": 1
+    },
+    {
+      "id": "raw_477605406_02__477744474_01",
+      "source_from": "477605406_02",
+      "source_to": "477744474_01",
+      "junction": "204920",
+      "all_19_day_count": 462672,
+      "sample_20220810_0500_count": 67
+    },
+    {
+      "id": "raw_477605406_02__477755532_01_01",
+      "source_from": "477605406_02",
+      "source_to": "477755532_01_01",
+      "junction": "204920",
+      "all_19_day_count": 67703,
+      "sample_20220810_0500_count": 7
+    },
+    {
+      "id": "raw_477605419_02__477605419_01",
+      "source_from": "477605419_02",
+      "source_to": "477605419_01",
+      "junction": "201330",
+      "all_19_day_count": 507,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477605419_02__477605685_01",
+      "source_from": "477605419_02",
+      "source_to": "477605685_01",
+      "junction": "201330",
+      "all_19_day_count": 393269,
+      "sample_20220810_0500_count": 34
+    },
+    {
+      "id": "raw_477605419_02__477643151_01",
+      "source_from": "477605419_02",
+      "source_to": "477643151_01",
+      "junction": "201330",
+      "all_19_day_count": 76921,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477605419_02__477657424_01",
+      "source_from": "477605419_02",
+      "source_to": "477657424_01",
+      "junction": "201330",
+      "all_19_day_count": 72441,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477605452_02__477605452_01",
+      "source_from": "477605452_02",
+      "source_to": "477605452_01",
+      "junction": "201305",
+      "all_19_day_count": 2609,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477605452_02__477605619_01",
+      "source_from": "477605452_02",
+      "source_to": "477605619_01",
+      "junction": "201305",
+      "all_19_day_count": 520599,
+      "sample_20220810_0500_count": 73
+    },
+    {
+      "id": "raw_477605452_02__477649545_01",
+      "source_from": "477605452_02",
+      "source_to": "477649545_01",
+      "junction": "201305",
+      "all_19_day_count": 36884,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477605452_02__477666530_01",
+      "source_from": "477605452_02",
+      "source_to": "477666530_01",
+      "junction": "201305",
+      "all_19_day_count": 26336,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477605619_02__477605452_01",
+      "source_from": "477605619_02",
+      "source_to": "477605452_01",
+      "junction": "201305",
+      "all_19_day_count": 517521,
+      "sample_20220810_0500_count": 65
+    },
+    {
+      "id": "raw_477605619_02__477605619_01",
+      "source_from": "477605619_02",
+      "source_to": "477605619_01",
+      "junction": "201305",
+      "all_19_day_count": 931,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477605619_02__477649545_01",
+      "source_from": "477605619_02",
+      "source_to": "477649545_01",
+      "junction": "201305",
+      "all_19_day_count": 23869,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477605619_02__477666530_01",
+      "source_from": "477605619_02",
+      "source_to": "477666530_01",
+      "junction": "201305",
+      "all_19_day_count": 33304,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477605685_02__477605419_01",
+      "source_from": "477605685_02",
+      "source_to": "477605419_01",
+      "junction": "201330",
+      "all_19_day_count": 488765,
+      "sample_20220810_0500_count": 76
+    },
+    {
+      "id": "raw_477605685_02__477605685_01",
+      "source_from": "477605685_02",
+      "source_to": "477605685_01",
+      "junction": "201330",
+      "all_19_day_count": 708,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477605685_02__477643151_01",
+      "source_from": "477605685_02",
+      "source_to": "477643151_01",
+      "junction": "201330",
+      "all_19_day_count": 36243,
+      "sample_20220810_0500_count": 4
+    },
+    {
+      "id": "raw_477605685_02__477657424_01",
+      "source_from": "477605685_02",
+      "source_to": "477657424_01",
+      "junction": "201330",
+      "all_19_day_count": 60020,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477610002_02__477604809_01",
+      "source_from": "477610002_02",
+      "source_to": "477604809_01",
+      "junction": "201300",
+      "all_19_day_count": 95222,
+      "sample_20220810_0500_count": 16
+    },
+    {
+      "id": "raw_477610002_02__477660958_01",
+      "source_from": "477610002_02",
+      "source_to": "477660958_01",
+      "junction": "201300",
+      "all_19_day_count": 26932,
+      "sample_20220810_0500_count": 4
+    },
+    {
+      "id": "raw_477610040_01_02__477604020_01",
+      "source_from": "477610040_01_02",
+      "source_to": "477604020_01",
+      "junction": "201329",
+      "all_19_day_count": 49081,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477610040_01_02__477604628_01",
+      "source_from": "477610040_01_02",
+      "source_to": "477604628_01",
+      "junction": "201329",
+      "all_19_day_count": 117912,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477610040_01_02__477604635_01",
+      "source_from": "477610040_01_02",
+      "source_to": "477604635_01",
+      "junction": "201329",
+      "all_19_day_count": 32581,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477610053_02020202_01__477604809_01",
+      "source_from": "477610053_02020202_01",
+      "source_to": "477604809_01",
+      "junction": "201300",
+      "all_19_day_count": 32711,
+      "sample_20220810_0500_count": 5
+    },
+    {
+      "id": "raw_477610053_02020202_01__477610002_01",
+      "source_from": "477610053_02020202_01",
+      "source_to": "477610002_01",
+      "junction": "201300",
+      "all_19_day_count": 76119,
+      "sample_20220810_0500_count": 9
+    },
+    {
+      "id": "raw_477610053_02020202_01__477660958_01",
+      "source_from": "477610053_02020202_01",
+      "source_to": "477660958_01",
+      "junction": "201300",
+      "all_19_day_count": 45649,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477610076_02__477649578_02_02",
+      "source_from": "477610076_02",
+      "source_to": "477649578_02_02",
+      "junction": "201306",
+      "all_19_day_count": 20491,
+      "sample_20220810_0500_count": 5
+    },
+    {
+      "id": "raw_477610076_02__477649580_01_01",
+      "source_from": "477610076_02",
+      "source_to": "477649580_01_01",
+      "junction": "201306",
+      "all_19_day_count": 21628,
+      "sample_20220810_0500_count": 4
+    },
+    {
+      "id": "raw_477610076_02__477651439_01",
+      "source_from": "477610076_02",
+      "source_to": "477651439_01",
+      "junction": "201306",
+      "all_19_day_count": 18582,
+      "sample_20220810_0500_count": 1
+    },
+    {
+      "id": "raw_477643151_02__477605419_01",
+      "source_from": "477643151_02",
+      "source_to": "477605419_01",
+      "junction": "201330",
+      "all_19_day_count": 91639,
+      "sample_20220810_0500_count": 27
+    },
+    {
+      "id": "raw_477643151_02__477605685_01",
+      "source_from": "477643151_02",
+      "source_to": "477605685_01",
+      "junction": "201330",
+      "all_19_day_count": 70085,
+      "sample_20220810_0500_count": 15
+    },
+    {
+      "id": "raw_477643151_02__477643151_01",
+      "source_from": "477643151_02",
+      "source_to": "477643151_01",
+      "junction": "201330",
+      "all_19_day_count": 268,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477643151_02__477657424_01",
+      "source_from": "477643151_02",
+      "source_to": "477657424_01",
+      "junction": "201330",
+      "all_19_day_count": 65278,
+      "sample_20220810_0500_count": 9
+    },
+    {
+      "id": "raw_477649508_01_02__477604248_0202_02",
+      "source_from": "477649508_01_02",
+      "source_to": "477604248_0202_02",
+      "junction": "201292",
+      "all_19_day_count": 88118,
+      "sample_20220810_0500_count": 12
+    },
+    {
+      "id": "raw_477649508_01_02__477604732_02",
+      "source_from": "477649508_01_02",
+      "source_to": "477604732_02",
+      "junction": "201292",
+      "all_19_day_count": 35722,
+      "sample_20220810_0500_count": 5
+    },
+    {
+      "id": "raw_477649508_01_02__477604827_010101_01",
+      "source_from": "477649508_01_02",
+      "source_to": "477604827_010101_01",
+      "junction": "201292",
+      "all_19_day_count": 32871,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477649509_02__477604827_02_02",
+      "source_from": "477649509_02",
+      "source_to": "477604827_02_02",
+      "junction": "201301",
+      "all_19_day_count": 36367,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477649509_02__477649559_01",
+      "source_from": "477649509_02",
+      "source_to": "477649559_01",
+      "junction": "201301",
+      "all_19_day_count": 35905,
+      "sample_20220810_0500_count": 1
+    },
+    {
+      "id": "raw_477649509_02__477649571_010101_01",
+      "source_from": "477649509_02",
+      "source_to": "477649571_010101_01",
+      "junction": "201301",
+      "all_19_day_count": 14771,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477649545_02__477605452_01",
+      "source_from": "477649545_02",
+      "source_to": "477605452_01",
+      "junction": "201305",
+      "all_19_day_count": 24574,
+      "sample_20220810_0500_count": 9
+    },
+    {
+      "id": "raw_477649545_02__477605619_01",
+      "source_from": "477649545_02",
+      "source_to": "477605619_01",
+      "junction": "201305",
+      "all_19_day_count": 20524,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477649545_02__477666530_01",
+      "source_from": "477649545_02",
+      "source_to": "477666530_01",
+      "junction": "201305",
+      "all_19_day_count": 27928,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477649559_02__477604827_02_02",
+      "source_from": "477649559_02",
+      "source_to": "477604827_02_02",
+      "junction": "201301",
+      "all_19_day_count": 10195,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477649559_02__477649509_01",
+      "source_from": "477649559_02",
+      "source_to": "477649509_01",
+      "junction": "201301",
+      "all_19_day_count": 33183,
+      "sample_20220810_0500_count": 6
+    },
+    {
+      "id": "raw_477649559_02__477649571_010101_01",
+      "source_from": "477649559_02",
+      "source_to": "477649571_010101_01",
+      "junction": "201301",
+      "all_19_day_count": 18468,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477649571_010101_02__477604827_02_02",
+      "source_from": "477649571_010101_02",
+      "source_to": "477604827_02_02",
+      "junction": "201301",
+      "all_19_day_count": 104228,
+      "sample_20220810_0500_count": 13
+    },
+    {
+      "id": "raw_477649571_010101_02__477649509_01",
+      "source_from": "477649571_010101_02",
+      "source_to": "477649509_01",
+      "junction": "201301",
+      "all_19_day_count": 17540,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477649571_010101_02__477649559_01",
+      "source_from": "477649571_010101_02",
+      "source_to": "477649559_01",
+      "junction": "201301",
+      "all_19_day_count": 17768,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477649578_010101_02__477603993_02_02",
+      "source_from": "477649578_010101_02",
+      "source_to": "477603993_02_02",
+      "junction": "201293",
+      "all_19_day_count": 46801,
+      "sample_20220810_0500_count": 6
+    },
+    {
+      "id": "raw_477649578_010101_02__477604193_02",
+      "source_from": "477649578_010101_02",
+      "source_to": "477604193_02",
+      "junction": "201293",
+      "all_19_day_count": 83410,
+      "sample_20220810_0500_count": 11
+    },
+    {
+      "id": "raw_477649578_010101_02__477670332_02",
+      "source_from": "477649578_010101_02",
+      "source_to": "477670332_02",
+      "junction": "201293",
+      "all_19_day_count": 45308,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477649578_02_01__477610076_01",
+      "source_from": "477649578_02_01",
+      "source_to": "477610076_01",
+      "junction": "201306",
+      "all_19_day_count": 158406,
+      "sample_20220810_0500_count": 13
+    },
+    {
+      "id": "raw_477649578_02_01__477649580_01_01",
+      "source_from": "477649578_02_01",
+      "source_to": "477649580_01_01",
+      "junction": "201306",
+      "all_19_day_count": 30903,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477649578_02_01__477651439_01",
+      "source_from": "477649578_02_01",
+      "source_to": "477651439_01",
+      "junction": "201306",
+      "all_19_day_count": 25193,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477649580_01_02__477610076_01",
+      "source_from": "477649580_01_02",
+      "source_to": "477610076_01",
+      "junction": "201306",
+      "all_19_day_count": 14358,
+      "sample_20220810_0500_count": 1
+    },
+    {
+      "id": "raw_477649580_01_02__477649578_02_02",
+      "source_from": "477649580_01_02",
+      "source_to": "477649578_02_02",
+      "junction": "201306",
+      "all_19_day_count": 21200,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477649580_01_02__477651439_01",
+      "source_from": "477649580_01_02",
+      "source_to": "477651439_01",
+      "junction": "201306",
+      "all_19_day_count": 27935,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477651439_02__477610076_01",
+      "source_from": "477651439_02",
+      "source_to": "477610076_01",
+      "junction": "201306",
+      "all_19_day_count": 15398,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477651439_02__477649578_02_02",
+      "source_from": "477651439_02",
+      "source_to": "477649578_02_02",
+      "junction": "201306",
+      "all_19_day_count": 16133,
+      "sample_20220810_0500_count": 1
+    },
+    {
+      "id": "raw_477651439_02__477649580_01_01",
+      "source_from": "477651439_02",
+      "source_to": "477649580_01_01",
+      "junction": "201306",
+      "all_19_day_count": 146325,
+      "sample_20220810_0500_count": 15
+    },
+    {
+      "id": "raw_477656848_02__477605406_01",
+      "source_from": "477656848_02",
+      "source_to": "477605406_01",
+      "junction": "204920",
+      "all_19_day_count": 59659,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477656848_02__477744474_01",
+      "source_from": "477656848_02",
+      "source_to": "477744474_01",
+      "junction": "204920",
+      "all_19_day_count": 51682,
+      "sample_20220810_0500_count": 15
+    },
+    {
+      "id": "raw_477656848_02__477755532_01_01",
+      "source_from": "477656848_02",
+      "source_to": "477755532_01_01",
+      "junction": "204920",
+      "all_19_day_count": 39476,
+      "sample_20220810_0500_count": 4
+    },
+    {
+      "id": "raw_477657424_02__477605419_01",
+      "source_from": "477657424_02",
+      "source_to": "477605419_01",
+      "junction": "201330",
+      "all_19_day_count": 46042,
+      "sample_20220810_0500_count": 6
+    },
+    {
+      "id": "raw_477657424_02__477605685_01",
+      "source_from": "477657424_02",
+      "source_to": "477605685_01",
+      "junction": "201330",
+      "all_19_day_count": 33993,
+      "sample_20220810_0500_count": 4
+    },
+    {
+      "id": "raw_477657424_02__477643151_01",
+      "source_from": "477657424_02",
+      "source_to": "477643151_01",
+      "junction": "201330",
+      "all_19_day_count": 60570,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477657424_02__477657424_01",
+      "source_from": "477657424_02",
+      "source_to": "477657424_01",
+      "junction": "201330",
+      "all_19_day_count": 1552,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477660958_02__477604809_01",
+      "source_from": "477660958_02",
+      "source_to": "477604809_01",
+      "junction": "201300",
+      "all_19_day_count": 132216,
+      "sample_20220810_0500_count": 6
+    },
+    {
+      "id": "raw_477660958_02__477610002_01",
+      "source_from": "477660958_02",
+      "source_to": "477610002_01",
+      "junction": "201300",
+      "all_19_day_count": 32717,
+      "sample_20220810_0500_count": 4
+    },
+    {
+      "id": "raw_477660958_02__477610053_02020202_02",
+      "source_from": "477660958_02",
+      "source_to": "477610053_02020202_02",
+      "junction": "201300",
+      "all_19_day_count": 15252,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477660958_02__477660958_01",
+      "source_from": "477660958_02",
+      "source_to": "477660958_01",
+      "junction": "201300",
+      "all_19_day_count": 958,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477666530_02__477605452_01",
+      "source_from": "477666530_02",
+      "source_to": "477605452_01",
+      "junction": "201305",
+      "all_19_day_count": 34022,
+      "sample_20220810_0500_count": 1
+    },
+    {
+      "id": "raw_477666530_02__477605619_01",
+      "source_from": "477666530_02",
+      "source_to": "477605619_01",
+      "junction": "201305",
+      "all_19_day_count": 37059,
+      "sample_20220810_0500_count": 11
+    },
+    {
+      "id": "raw_477666530_02__477649545_01",
+      "source_from": "477666530_02",
+      "source_to": "477649545_01",
+      "junction": "201305",
+      "all_19_day_count": 25638,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477666530_02__477666530_01",
+      "source_from": "477666530_02",
+      "source_to": "477666530_01",
+      "junction": "201305",
+      "all_19_day_count": 894,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477670332_01__477604193_02",
+      "source_from": "477670332_01",
+      "source_to": "477604193_02",
+      "junction": "201293",
+      "all_19_day_count": 38661,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477670332_01__477649578_010101_01",
+      "source_from": "477670332_01",
+      "source_to": "477649578_010101_01",
+      "junction": "201293",
+      "all_19_day_count": 25326,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477670332_01__477670332_02",
+      "source_from": "477670332_01",
+      "source_to": "477670332_02",
+      "junction": "201293",
+      "all_19_day_count": 138473,
+      "sample_20220810_0500_count": 17
+    },
+    {
+      "id": "raw_477704547_02__477706439_01",
+      "source_from": "477704547_02",
+      "source_to": "477706439_01",
+      "junction": "204822",
+      "all_19_day_count": 107015,
+      "sample_20220810_0500_count": 27
+    },
+    {
+      "id": "raw_477704547_02__477707011_02",
+      "source_from": "477704547_02",
+      "source_to": "477707011_02",
+      "junction": "204822",
+      "all_19_day_count": 77725,
+      "sample_20220810_0500_count": 1
+    },
+    {
+      "id": "raw_477704547_02__477714888_01",
+      "source_from": "477704547_02",
+      "source_to": "477714888_01",
+      "junction": "204822",
+      "all_19_day_count": 63419,
+      "sample_20220810_0500_count": 8
+    },
+    {
+      "id": "raw_477706392_02__477706392_01",
+      "source_from": "477706392_02",
+      "source_to": "477706392_01",
+      "junction": "204820",
+      "all_19_day_count": 1090,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477706392_02__477706883_02",
+      "source_from": "477706392_02",
+      "source_to": "477706883_02",
+      "junction": "204820",
+      "all_19_day_count": 60634,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477706392_02__477706911_02",
+      "source_from": "477706392_02",
+      "source_to": "477706911_02",
+      "junction": "204820",
+      "all_19_day_count": 32552,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477706392_02__477707013_01",
+      "source_from": "477706392_02",
+      "source_to": "477707013_01",
+      "junction": "204820",
+      "all_19_day_count": 660407,
+      "sample_20220810_0500_count": 118
+    },
+    {
+      "id": "raw_477706439_02__477704547_01",
+      "source_from": "477706439_02",
+      "source_to": "477704547_01",
+      "junction": "204822",
+      "all_19_day_count": 47695,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477706439_02__477706439_01",
+      "source_from": "477706439_02",
+      "source_to": "477706439_01",
+      "junction": "204822",
+      "all_19_day_count": 2495,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477706439_02__477707011_02",
+      "source_from": "477706439_02",
+      "source_to": "477707011_02",
+      "junction": "204822",
+      "all_19_day_count": 50155,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477706439_02__477714888_01",
+      "source_from": "477706439_02",
+      "source_to": "477714888_01",
+      "junction": "204822",
+      "all_19_day_count": 602221,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477706883_01__477706392_01",
+      "source_from": "477706883_01",
+      "source_to": "477706392_01",
+      "junction": "204820",
+      "all_19_day_count": 79959,
+      "sample_20220810_0500_count": 10
+    },
+    {
+      "id": "raw_477706883_01__477706911_02",
+      "source_from": "477706883_01",
+      "source_to": "477706911_02",
+      "junction": "204820",
+      "all_19_day_count": 77389,
+      "sample_20220810_0500_count": 6
+    },
+    {
+      "id": "raw_477706883_01__477707013_01",
+      "source_from": "477706883_01",
+      "source_to": "477707013_01",
+      "junction": "204820",
+      "all_19_day_count": 60381,
+      "sample_20220810_0500_count": 6
+    },
+    {
+      "id": "raw_477706911_01__477706392_01",
+      "source_from": "477706911_01",
+      "source_to": "477706392_01",
+      "junction": "204820",
+      "all_19_day_count": 40985,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477706911_01__477706883_02",
+      "source_from": "477706911_01",
+      "source_to": "477706883_02",
+      "junction": "204820",
+      "all_19_day_count": 71456,
+      "sample_20220810_0500_count": 8
+    },
+    {
+      "id": "raw_477706911_01__477707013_01",
+      "source_from": "477706911_01",
+      "source_to": "477707013_01",
+      "junction": "204820",
+      "all_19_day_count": 27537,
+      "sample_20220810_0500_count": 11
+    },
+    {
+      "id": "raw_477707011_01__477704547_01",
+      "source_from": "477707011_01",
+      "source_to": "477704547_01",
+      "junction": "204822",
+      "all_19_day_count": 60311,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477707011_01__477706439_01",
+      "source_from": "477707011_01",
+      "source_to": "477706439_01",
+      "junction": "204822",
+      "all_19_day_count": 36098,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477707011_01__477714888_01",
+      "source_from": "477707011_01",
+      "source_to": "477714888_01",
+      "junction": "204822",
+      "all_19_day_count": 52701,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477707013_02__477706392_01",
+      "source_from": "477707013_02",
+      "source_to": "477706392_01",
+      "junction": "204820",
+      "all_19_day_count": 612457,
+      "sample_20220810_0500_count": 83
+    },
+    {
+      "id": "raw_477707013_02__477706883_02",
+      "source_from": "477707013_02",
+      "source_to": "477706883_02",
+      "junction": "204820",
+      "all_19_day_count": 95128,
+      "sample_20220810_0500_count": 7
+    },
+    {
+      "id": "raw_477707013_02__477706911_02",
+      "source_from": "477707013_02",
+      "source_to": "477706911_02",
+      "junction": "204820",
+      "all_19_day_count": 33542,
+      "sample_20220810_0500_count": 8
+    },
+    {
+      "id": "raw_477707013_02__477707013_01",
+      "source_from": "477707013_02",
+      "source_to": "477707013_01",
+      "junction": "204820",
+      "all_19_day_count": 2239,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477714888_02__477704547_01",
+      "source_from": "477714888_02",
+      "source_to": "477704547_01",
+      "junction": "204822",
+      "all_19_day_count": 72372,
+      "sample_20220810_0500_count": 8
+    },
+    {
+      "id": "raw_477714888_02__477706439_01",
+      "source_from": "477714888_02",
+      "source_to": "477706439_01",
+      "junction": "204822",
+      "all_19_day_count": 601298,
+      "sample_20220810_0500_count": 119
+    },
+    {
+      "id": "raw_477714888_02__477707011_02",
+      "source_from": "477714888_02",
+      "source_to": "477707011_02",
+      "junction": "204822",
+      "all_19_day_count": 14947,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477714888_02__477714888_01",
+      "source_from": "477714888_02",
+      "source_to": "477714888_01",
+      "junction": "204822",
+      "all_19_day_count": 22499,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477744474_02__477605406_01",
+      "source_from": "477744474_02",
+      "source_to": "477605406_01",
+      "junction": "204920",
+      "all_19_day_count": 493222,
+      "sample_20220810_0500_count": 78
+    },
+    {
+      "id": "raw_477744474_02__477656848_01",
+      "source_from": "477744474_02",
+      "source_to": "477656848_01",
+      "junction": "204920",
+      "all_19_day_count": 29374,
+      "sample_20220810_0500_count": 4
+    },
+    {
+      "id": "raw_477744474_02__477744474_01",
+      "source_from": "477744474_02",
+      "source_to": "477744474_01",
+      "junction": "204920",
+      "all_19_day_count": 4566,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477744474_02__477755532_01_01",
+      "source_from": "477744474_02",
+      "source_to": "477755532_01_01",
+      "junction": "204920",
+      "all_19_day_count": 91659,
+      "sample_20220810_0500_count": 14
+    },
+    {
+      "id": "raw_477753313_02__477748640_01",
+      "source_from": "477753313_02",
+      "source_to": "477748640_01",
+      "junction": "cluster_204796_205202",
+      "all_19_day_count": 84421,
+      "sample_20220810_0500_count": 19
+    },
+    {
+      "id": "raw_477753313_02__477748652_01",
+      "source_from": "477753313_02",
+      "source_to": "477748652_01",
+      "junction": "cluster_204796_205202",
+      "all_19_day_count": 102807,
+      "sample_20220810_0500_count": 3
+    },
+    {
+      "id": "raw_477753313_02__477753313_01",
+      "source_from": "477753313_02",
+      "source_to": "477753313_01",
+      "junction": "cluster_204796_205202",
+      "all_19_day_count": 332,
+      "sample_20220810_0500_count": 0
+    },
+    {
+      "id": "raw_477753313_02__477757554_01",
+      "source_from": "477753313_02",
+      "source_to": "477757554_01",
+      "junction": "cluster_204796_205202",
+      "all_19_day_count": 322943,
+      "sample_20220810_0500_count": 57
+    },
+    {
+      "id": "raw_477755532_01_02__477605406_01",
+      "source_from": "477755532_01_02",
+      "source_to": "477605406_01",
+      "junction": "204920",
+      "all_19_day_count": 37250,
+      "sample_20220810_0500_count": 2
+    },
+    {
+      "id": "raw_477755532_01_02__477656848_01",
+      "source_from": "477755532_01_02",
+      "source_to": "477656848_01",
+      "junction": "204920",
+      "all_19_day_count": 38307,
+      "sample_20220810_0500_count": 1
+    },
+    {
+      "id": "raw_477755532_01_02__477744474_01",
+      "source_from": "477755532_01_02",
+      "source_to": "477744474_01",
+      "junction": "204920",
+      "all_19_day_count": 23873,
+      "sample_20220810_0500_count": 1
+    },
+    {
+      "id": "raw_477757554_02__477748640_01",
+      "source_from": "477757554_02",
+      "source_to": "477748640_01",
+      "junction": "cluster_204796_205202",
+      "all_19_day_count": 84737,
+      "sample_20220810_0500_count": 14
+    },
+    {
+      "id": "raw_477757554_02__477748652_01",
+      "source_from": "477757554_02",
+      "source_to": "477748652_01",
+      "junction": "cluster_204796_205202",
+      "all_19_day_count": 124753,
+      "sample_20220810_0500_count": 23
+    },
+    {
+      "id": "raw_477757554_02__477753313_01",
+      "source_from": "477757554_02",
+      "source_to": "477753313_01",
+      "junction": "cluster_204796_205202",
+      "all_19_day_count": 403292,
+      "sample_20220810_0500_count": 52
+    },
+    {
+      "id": "raw_477757554_02__477757554_01",
+      "source_from": "477757554_02",
+      "source_to": "477757554_01",
+      "junction": "cluster_204796_205202",
+      "all_19_day_count": 2876,
+      "sample_20220810_0500_count": 7
+    },
+    {
+      "id": "raw_477765074_01__477748640_01",
+      "source_from": "477765074_01",
+      "source_to": "477748640_01",
+      "junction": "cluster_204796_205202",
+      "all_19_day_count": 66055,
+      "sample_20220810_0500_count": 4
+    },
+    {
+      "id": "raw_477765074_01__477753313_01",
+      "source_from": "477765074_01",
+      "source_to": "477753313_01",
+      "junction": "cluster_204796_205202",
+      "all_19_day_count": 117410,
+      "sample_20220810_0500_count": 29
+    },
+    {
+      "id": "raw_477765074_01__477757554_01",
+      "source_from": "477765074_01",
+      "source_to": "477757554_01",
+      "junction": "cluster_204796_205202",
+      "all_19_day_count": 107867,
+      "sample_20220810_0500_count": 8
+    },
+    {
+      "id": "raw_477765078_01__477748652_01",
+      "source_from": "477765078_01",
+      "source_to": "477748652_01",
+      "junction": "cluster_204796_205202",
+      "all_19_day_count": 115684,
+      "sample_20220810_0500_count": 16
+    },
+    {
+      "id": "raw_477765078_01__477753313_01",
+      "source_from": "477765078_01",
+      "source_to": "477753313_01",
+      "junction": "cluster_204796_205202",
+      "all_19_day_count": 56050,
+      "sample_20220810_0500_count": 4
+    },
+    {
+      "id": "raw_477765078_01__477757554_01",
+      "source_from": "477765078_01",
+      "source_to": "477757554_01",
+      "junction": "cluster_204796_205202",
+      "all_19_day_count": 79119,
+      "sample_20220810_0500_count": 21
+    }
+  ],
+  "overrides": [
+    {
+      "source_from": "477706392_02",
+      "source_to": "477706911_02",
+      "path": [
+        "477706392_02",
+        "477706911_02_02"
+      ],
+      "resolution": "alias",
+      "status": "assumption",
+      "evidence_level": "assumption",
+      "evidence": "Raw destination ID is absent. The supplied map has a connected outward edge of the same road family 477706911_02_02; observation-to-edge equivalence is an explicit ID hypothesis.",
+      "known_facts": [
+        "The raw ID is absent from the provided network",
+        "The alternative outgoing edge exists and its direct connection is validated"
+      ],
+      "source_refs": [
+        "AI Hub supplied 1200012n.net.xml (original SHA256 c041e7ccf0c389ea60425a5916ba36e3c89838177ce61b2ddf1d6229cf67223d)",
+        "results/codex_design_audit_20261005/network/network_semantic_recheck.json"
+      ]
+    },
+    {
+      "source_from": "477706883_01",
+      "source_to": "477706911_02",
+      "path": [
+        "477706883_01",
+        "477706911_02_02"
+      ],
+      "resolution": "alias",
+      "status": "assumption",
+      "evidence_level": "assumption",
+      "evidence": "Raw destination ID is absent. The supplied map has a connected outward edge of the same road family 477706911_02_02; observation-to-edge equivalence is an explicit ID hypothesis.",
+      "known_facts": [
+        "The raw ID is absent from the provided network",
+        "The alternative outgoing edge exists and its direct connection is validated"
+      ],
+      "source_refs": [
+        "AI Hub supplied 1200012n.net.xml (original SHA256 c041e7ccf0c389ea60425a5916ba36e3c89838177ce61b2ddf1d6229cf67223d)",
+        "results/codex_design_audit_20261005/network/network_semantic_recheck.json"
+      ]
+    },
+    {
+      "source_from": "477707013_02",
+      "source_to": "477706911_02",
+      "path": [
+        "477707013_02",
+        "477706911_02_02"
+      ],
+      "resolution": "alias",
+      "status": "assumption",
+      "evidence_level": "assumption",
+      "evidence": "Raw destination ID is absent. The supplied map has a connected outward edge of the same road family 477706911_02_02; observation-to-edge equivalence is an explicit ID hypothesis.",
+      "known_facts": [
+        "The raw ID is absent from the provided network",
+        "The alternative outgoing edge exists and its direct connection is validated"
+      ],
+      "source_refs": [
+        "AI Hub supplied 1200012n.net.xml (original SHA256 c041e7ccf0c389ea60425a5916ba36e3c89838177ce61b2ddf1d6229cf67223d)",
+        "results/codex_design_audit_20261005/network/network_semantic_recheck.json"
+      ]
+    },
+    {
+      "source_from": "477605419_02",
+      "source_to": "477643151_01",
+      "path": [
+        "477643154_02020202_01",
+        "477643146_01",
+        "477649538_0101_01"
+      ],
+      "resolution": "bypass",
+      "status": "assumption",
+      "evidence_level": "assumption",
+      "evidence": "The map contains a complete separated-turn corridor sharing upstream and downstream roads with the raw approach/exit corridor. Treating the raw intersection-level count as this bypass count is an explicit semantic assumption.",
+      "known_facts": [
+        "No direct raw-ID connection in the provided map",
+        "The complete entry-bypass-exit path is connected",
+        "Original and bypass corridors share model upstream/downstream anchors"
+      ],
+      "source_refs": [
+        "AI Hub supplied 1200012n.net.xml (original SHA256 c041e7ccf0c389ea60425a5916ba36e3c89838177ce61b2ddf1d6229cf67223d)",
+        "results/codex_design_audit_20261005/network/network_semantic_recheck.json",
+        "results/roadview_review_20261002/회전별_확인결과.md"
+      ],
+      "count_rule": "contiguous_complete_path",
+      "raw_pair_traversed": false
+    },
+    {
+      "source_from": "477605685_02",
+      "source_to": "477657424_01",
+      "path": [
+        "477643149_02_01",
+        "477643147_01",
+        "-E4"
+      ],
+      "resolution": "bypass",
+      "status": "assumption",
+      "evidence_level": "assumption",
+      "evidence": "The map contains a complete separated-turn corridor sharing upstream and downstream roads with the raw approach/exit corridor. Treating the raw intersection-level count as this bypass count is an explicit semantic assumption.",
+      "known_facts": [
+        "No direct raw-ID connection in the provided map",
+        "The complete entry-bypass-exit path is connected",
+        "Original and bypass corridors share model upstream/downstream anchors"
+      ],
+      "source_refs": [
+        "AI Hub supplied 1200012n.net.xml (original SHA256 c041e7ccf0c389ea60425a5916ba36e3c89838177ce61b2ddf1d6229cf67223d)",
+        "results/codex_design_audit_20261005/network/network_semantic_recheck.json",
+        "results/roadview_review_20261002/회전별_확인결과.md"
+      ],
+      "count_rule": "contiguous_complete_path",
+      "raw_pair_traversed": false
+    },
+    {
+      "source_from": "477643151_02",
+      "source_to": "477605685_01",
+      "path": [
+        "477649538_0101_02",
+        "477643145_01",
+        "477643149_02_02"
+      ],
+      "resolution": "bypass",
+      "status": "assumption",
+      "evidence_level": "assumption",
+      "evidence": "The map contains a complete separated-turn corridor sharing upstream and downstream roads with the raw approach/exit corridor. Treating the raw intersection-level count as this bypass count is an explicit semantic assumption.",
+      "known_facts": [
+        "No direct raw-ID connection in the provided map",
+        "The complete entry-bypass-exit path is connected",
+        "Original and bypass corridors share model upstream/downstream anchors"
+      ],
+      "source_refs": [
+        "AI Hub supplied 1200012n.net.xml (original SHA256 c041e7ccf0c389ea60425a5916ba36e3c89838177ce61b2ddf1d6229cf67223d)",
+        "results/codex_design_audit_20261005/network/network_semantic_recheck.json",
+        "results/roadview_review_20261002/회전별_확인결과.md"
+      ],
+      "count_rule": "contiguous_complete_path",
+      "raw_pair_traversed": false
+    },
+    {
+      "source_from": "477657424_02",
+      "source_to": "477605419_01",
+      "path": [
+        "E4",
+        "477643148_01",
+        "477643154_02020202_02"
+      ],
+      "resolution": "bypass",
+      "status": "assumption",
+      "evidence_level": "assumption",
+      "evidence": "The map contains a complete separated-turn corridor sharing upstream and downstream roads with the raw approach/exit corridor. Treating the raw intersection-level count as this bypass count is an explicit semantic assumption.",
+      "known_facts": [
+        "No direct raw-ID connection in the provided map",
+        "The complete entry-bypass-exit path is connected",
+        "Original and bypass corridors share model upstream/downstream anchors"
+      ],
+      "source_refs": [
+        "AI Hub supplied 1200012n.net.xml (original SHA256 c041e7ccf0c389ea60425a5916ba36e3c89838177ce61b2ddf1d6229cf67223d)",
+        "results/codex_design_audit_20261005/network/network_semantic_recheck.json",
+        "results/roadview_review_20261002/회전별_확인결과.md"
+      ],
+      "count_rule": "contiguous_complete_path",
+      "raw_pair_traversed": false
+    },
+    {
+      "source_from": "477765074_01",
+      "source_to": "477757554_01",
+      "path": [
+        "477714244_02_01",
+        "477712245_01",
+        "477707232_01_01"
+      ],
+      "resolution": "bypass",
+      "status": "assumption",
+      "evidence_level": "assumption",
+      "evidence": "The map contains a complete separated-turn corridor sharing upstream and downstream roads with the raw approach/exit corridor. Treating the raw intersection-level count as this bypass count is an explicit semantic assumption.",
+      "known_facts": [
+        "No direct raw-ID connection in the provided map",
+        "The complete entry-bypass-exit path is connected",
+        "Original and bypass corridors share model upstream/downstream anchors"
+      ],
+      "source_refs": [
+        "AI Hub supplied 1200012n.net.xml (original SHA256 c041e7ccf0c389ea60425a5916ba36e3c89838177ce61b2ddf1d6229cf67223d)",
+        "results/codex_design_audit_20261005/network/network_semantic_recheck.json",
+        "results/roadview_review_20261002/회전별_확인결과.md"
+      ],
+      "count_rule": "contiguous_complete_path",
+      "raw_pair_traversed": false
+    },
+    {
+      "source_from": "477765078_01",
+      "source_to": "477753313_01",
+      "path": [
+        "477754785_0202_01",
+        "E1",
+        "477753312_0101_01"
+      ],
+      "resolution": "bypass",
+      "status": "assumption",
+      "evidence_level": "assumption",
+      "evidence": "The map contains a complete separated-turn corridor sharing upstream and downstream roads with the raw approach/exit corridor. Treating the raw intersection-level count as this bypass count is an explicit semantic assumption.",
+      "known_facts": [
+        "No direct raw-ID connection in the provided map",
+        "The complete entry-bypass-exit path is connected",
+        "Original and bypass corridors share model upstream/downstream anchors"
+      ],
+      "source_refs": [
+        "AI Hub supplied 1200012n.net.xml (original SHA256 c041e7ccf0c389ea60425a5916ba36e3c89838177ce61b2ddf1d6229cf67223d)",
+        "results/codex_design_audit_20261005/network/network_semantic_recheck.json",
+        "results/roadview_review_20261002/회전별_확인결과.md"
+      ],
+      "count_rule": "contiguous_complete_path",
+      "raw_pair_traversed": false
+    },
+    {
+      "source_from": "477610076_02",
+      "source_to": "477649580_01_01",
+      "path": null,
+      "resolution": "unresolved",
+      "status": "on_hold",
+      "evidence_level": "provided",
+      "evidence": "Field-photo evidence supports an allowed turn, but supplied-map connection and historical signal-column identity are not verified. Conservative map restoration is gated.",
+      "known_facts": [
+        "Both raw road IDs exist",
+        "The map lacks the direct connection",
+        "Provided historical signal width 17 differs from supplied map width 15"
+      ],
+      "source_refs": [
+        "AI Hub supplied 1200012n.net.xml (original SHA256 c041e7ccf0c389ea60425a5916ba36e3c89838177ce61b2ddf1d6229cf67223d)",
+        "results/codex_design_audit_20261005/network/network_semantic_recheck.json",
+        "results/realworld_check_20261002/현장확인결과.md"
+      ],
+      "required_patch": {
+        "from": "477610076_02",
+        "to": "477649580_01_01",
+        "junction": "201306",
+        "fromLane": 0,
+        "toLane": 0,
+        "variant_linkIndex": 15,
+        "embedded_through_linkIndex": 8,
+        "turn_direction": "right",
+        "source_column": null,
+        "status": "assumption",
+        "signal_rule": "permissive g while same approach embedded through link is green, y while yellow, r otherwise",
+        "evidence": "Road-view lane arrows support a possible turn; target lane and embedded timing rule are model assumptions; historical-column mapping unresolved"
+      },
+      "variants": {
+        "central_assumed_embedded": {
+          "path": [
+            "477610076_02",
+            "477649580_01_01"
+          ],
+          "resolution": "alias",
+          "status": "assumption",
+          "evidence_level": "assumption",
+          "evidence": "Hypothetical map restoration with permissive green following the same approach embedded through phase. This is not recovered historical source-column identity.",
+          "requires_network_patch": true
+        },
+        "central_assumed_embedded_uturn_as_straight": {
+          "path": [
+            "477610076_02",
+            "477649580_01_01"
+          ],
+          "resolution": "alias",
+          "status": "assumption",
+          "evidence_level": "assumption",
+          "evidence": "Hypothetical map restoration with permissive green following the same approach embedded through phase. This is not recovered historical source-column identity.",
+          "requires_network_patch": true
+        }
+      }
+    },
+    {
+      "source_from": "477651439_02",
+      "source_to": "477649578_02_02",
+      "path": null,
+      "resolution": "unresolved",
+      "status": "on_hold",
+      "evidence_level": "provided",
+      "evidence": "Field-photo evidence supports an allowed turn, but supplied-map connection and historical signal-column identity are not verified. Conservative map restoration is gated.",
+      "known_facts": [
+        "Both raw road IDs exist",
+        "The map lacks the direct connection",
+        "Provided historical signal width 17 differs from supplied map width 15"
+      ],
+      "source_refs": [
+        "AI Hub supplied 1200012n.net.xml (original SHA256 c041e7ccf0c389ea60425a5916ba36e3c89838177ce61b2ddf1d6229cf67223d)",
+        "results/codex_design_audit_20261005/network/network_semantic_recheck.json",
+        "results/realworld_check_20261002/현장확인결과.md"
+      ],
+      "required_patch": {
+        "from": "477651439_02",
+        "to": "477649578_02_02",
+        "junction": "201306",
+        "fromLane": 1,
+        "toLane": 1,
+        "variant_linkIndex": 16,
+        "embedded_through_linkIndex": 14,
+        "turn_direction": "left",
+        "source_column": null,
+        "status": "assumption",
+        "signal_rule": "permissive g while same approach embedded through link is green, y while yellow, r otherwise",
+        "evidence": "Road-view lane arrows support a possible turn; target lane and embedded timing rule are model assumptions; historical-column mapping unresolved"
+      },
+      "variants": {
+        "central_assumed_embedded": {
+          "path": [
+            "477651439_02",
+            "477649578_02_02"
+          ],
+          "resolution": "alias",
+          "status": "assumption",
+          "evidence_level": "assumption",
+          "evidence": "Hypothetical map restoration with permissive green following the same approach embedded through phase. This is not recovered historical source-column identity.",
+          "requires_network_patch": true
+        },
+        "central_assumed_embedded_uturn_as_straight": {
+          "path": [
+            "477651439_02",
+            "477649578_02_02"
+          ],
+          "resolution": "alias",
+          "status": "assumption",
+          "evidence_level": "assumption",
+          "evidence": "Hypothetical map restoration with permissive green following the same approach embedded through phase. This is not recovered historical source-column identity.",
+          "requires_network_patch": true
+        }
+      }
+    },
+    {
+      "source_from": "477670332_01",
+      "source_to": "477670332_02",
+      "path": null,
+      "resolution": "unresolved",
+      "status": "on_hold",
+      "evidence_level": "provided",
+      "evidence": "No map connection. User reports physical U-turn prohibition. Counts repeat at substantial scale, but illegal travel vs source classification error remains unresolved. Preserve all original counts in the denominator.",
+      "known_facts": [
+        "No t connection at supplied-model 201293",
+        "19-day raw count 138473",
+        "The existing model through movement is 477670332_01 to 477603993_02_02"
+      ],
+      "source_refs": [
+        "AI Hub supplied 1200012n.net.xml (original SHA256 c041e7ccf0c389ea60425a5916ba36e3c89838177ce61b2ddf1d6229cf67223d)",
+        "results/codex_design_audit_20261005/network/network_semantic_recheck.json",
+        "results/map_demand_plan_20261002/201293_direction_counts.json"
+      ],
+      "variants": {
+        "uturn_as_straight": {
+          "path": [
+            "477670332_01",
+            "477603993_02_02"
+          ],
+          "resolution": "alias",
+          "status": "assumption",
+          "evidence_level": "assumption",
+          "evidence": "Sensitivity hypothesis only: systematically mislabeled U-turn counts represent through travel. Large recurring counts and absence of recorded through counts motivate it but do not prove it. No raw observations are deleted or relabeled as ground truth."
+        },
+        "central_assumed_embedded_uturn_as_straight": {
+          "path": [
+            "477670332_01",
+            "477603993_02_02"
+          ],
+          "resolution": "alias",
+          "status": "assumption",
+          "evidence_level": "assumption",
+          "evidence": "Sensitivity hypothesis only: systematically mislabeled U-turn counts represent through travel. Large recurring counts and absence of recorded through counts motivate it but do not prove it. No raw observations are deleted or relabeled as ground truth."
+        }
+      }
+    }
+  ]
+}

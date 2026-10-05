@@ -36,11 +36,20 @@ def audit(path, routes=None):
     external = {k: e for k, e in edges.items() if e.get("function") != "internal"}
     lanes = {}; lane_index = {}
     for key, edge in edges.items():
-        for lane in edge.findall("lane"):
+        for ordinal, lane in enumerate(edge.findall("lane")):
             name = lane.get("id")
             if name in lanes:
                 errors.append({"type": "duplicate_lane_id", "lane": name})
-            lanes[name] = lane; lane_index[key, lane.get("index")] = lane
+            # SUMO and sumolib resolve connection fromLane/toLane by edge lane
+            # order. Some netconvert versions emit index="0" on the second lane
+            # of a grouped internal continuation edge. Keep that producer
+            # metadata discrepancy visible, without inventing a broken runtime
+            # connection. A genuinely out-of-range ordinal still fails below.
+            lanes[name] = lane; lane_index[key, str(ordinal)] = lane
+            if lane.get("index") != str(ordinal):
+                findings.append({"type": "lane_index_metadata_mismatch", "edge": key,
+                    "lane": name, "declared_index": lane.get("index"), "runtime_ordinal": ordinal,
+                    "interpretation": "producer metadata differs from SUMO/sumolib ordered-lane lookup"})
             if float(lane.get("length", "0")) <= 0 or float(lane.get("speed", "0")) <= 0:
                 errors.append({"type": "nonpositive_lane_geometry", "lane": name})
         if key in external:
