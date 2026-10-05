@@ -1,18 +1,17 @@
-"""석천사거리(204820) 중심 시나리오를 만든다.
+"""석천사거리(204820) 시나리오를 만든다: 차량 파일(수요·운전자)과 신호 프로그램.
 
-핵심 원칙: 204820에서 기록된 회전 1건 = 시뮬레이션 차량 1대.
+차량(write_routes)
+- 핵심 원칙: 204820에서 기록된 회전 1건 = 시뮬레이션 차량 1대.
 - 지도는 AI Hub 원본을 그대로 쓰고, 차량은 204820 주변 도로에서만 다닌다.
 - 각 이동은 "상류 직진 구간 → 진입 도로 → 진출 도로 → 하류 직진 구간" 경로로 만든다.
   상류·하류 구간은 다음 신호교차로 직전에서 끝나므로 다른 신호의 영향을 받지 않는다.
-- 차량은 기록된 1분 구간에 교차로에 도착하도록 출발 시각을 앞당긴다.
+- 이동별 15분 교통량을 그 15분 동안 무작위 시각에 정지선에 도착하도록 출발 시각을 정한다.
 
-신호는 세 가지를 만든다.
-- embedded: 지도 내장 프로그램(원본 그대로).
-- aihub_corrected: AI Hub 신호 자료를 "한 현시 밀림"으로 보정한 실제 운영 신호.
-  자료를 그대로 읽으면 관측 교통량을 처리할 수 없는 시간대가 96개 중 69개라
-  그대로는 실제 신호일 수 없다(results/focused_204820/signal_capacity_check.json).
-- aihub_asis: 자료 그대로(참고용).
-DQN은 신호 순서를 스스로 정하므로, 녹색 상태 4개만 담은 틀 지도를 따로 쓴다.
+신호(aihub_signal_program)
+- AI Hub 신호 자료를 "한 현시 밀림"으로 보정한 실제 운영 신호를 하루 시간축으로 복원한다.
+  자료를 그대로 읽으면 관측 교통량을 처리할 수 없는 시간대가 대부분이라 그대로는 실제 신호일 수
+  없다(1분 통과량과 녹색 시간의 상관으로 보정을 확인, docs/가상도로_정상화_20261004.md).
+- DQN은 신호 순서를 스스로 정하므로, 녹색 상태 4개만 담은 틀 지도를 따로 쓴다.
 """
 
 from __future__ import annotations
@@ -21,12 +20,11 @@ import copy
 import functools
 import random
 import statistics
-import unicodedata
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
 
-from focused_data import PROJECT, SIGNALS_ALL, TARGET_TLS, find_network, read_signal_phases, signal_xml_files
+from focused_data import PROJECT, SIGNALS, TARGET_TLS, VTYPES, find_network, read_signal_phases, signal_xml_files
 
 UPSTREAM_LIMIT_M = 300.0
 # 정지선 도착 시각을 흩뿌리는 구간(초). 통과 기록의 1분·5분 변화는 대부분 실제 신호의 녹색
@@ -155,12 +153,12 @@ def write_routes(fn: FocusedNetwork, rows: list[dict], output: Path, seed: int,
                  vtypes_file: Path | None = None, arrival_window: int = ARRIVAL_WINDOW_S,
                  time_offset: float = 0.0, vtype_attrs: dict[str, str] | None = None,
                  split_entry_branches: bool = True) -> dict:
-    """1분 구간 기록을 차량으로 바꿔 route 파일을 쓴다.
+    """15분 시간대의 1분 기록을 차량으로 바꿔 route 파일을 쓴다.
 
-    arrival_window: 정지선 도착 시각을 흩뿌리는 구간(초). 60이면 통과가 기록된 1분 안에,
-    300이면 그 1분이 속한 5분 안에 무작위로 도착시킨다. 1분 통과 기록에는 실제 신호의
-    녹색 시점이 그대로 찍혀 있어서(녹색 없는 분 2대, 녹색 40초 이상인 분 40대),
-    1분 단위로 도착시키면 차량이 실제 신호의 녹색에 맞춰 도착하게 된다.
+    arrival_window: 정지선 도착 시각을 흩뿌리는 구간(초). 기본 900이면 그 15분 안에 무작위로
+    도착시킨다(60이면 통과가 기록된 1분 안). 1분 통과 기록에는 실제 신호의 녹색 시점이 그대로
+    찍혀 있어서(녹색 없는 분 2대, 녹색 40초 이상인 분 40대), 1분 단위로 도착시키면 차량이
+    실제 신호의 녹색에 맞춰 도착해 고정신호에 유리해진다.
     time_offset: 출발 시각에 더할 초(하루를 이어 붙일 때 그 시간대의 시작 시각). 0초 앞으로는 당기지 않는다.
     vtype_attrs: 모든 차종에 덧붙일 운전자 설정. None이면 config/driver_model.json.
     split_entry_branches: ENTRY_BRANCHES 진입로의 차량을 상류 기록 비율대로 두 갈래에 나눈다.
@@ -169,7 +167,7 @@ def write_routes(fn: FocusedNetwork, rows: list[dict], output: Path, seed: int,
     """
     rng = random.Random(seed)
     branch_rng = random.Random(seed * 7919 + 1)   # 도착 시각 난수열을 건드리지 않도록 따로 둔다.
-    vtypes_file = vtypes_file or next((PROJECT / "Sample").rglob("exp.rou.xml"))
+    vtypes_file = vtypes_file or VTYPES
     attrs = driver_vtype_attributes() if vtype_attrs is None else vtype_attrs
     root = ET.Element("routes")
     for vtype in ET.parse(vtypes_file).getroot().findall("vType"):
@@ -263,20 +261,20 @@ def aihub_states(period_files: dict[str, Path] | None = None, date: str = "20220
 
 
 # ---------------------------------------------------------------- AI Hub 신호 하루 시간축
-# 15분 신호 파일의 기록 방식(19일 1,824개 파일 전수 확인, results/env_audit_20261004)
+# 15분 신호 파일의 기록 방식(19일 1,824개 파일 전수 확인, docs/가상도로_정상화_20261004.md)
 # - 파일은 15분 칸의 시작 시각부터 기록한다. 첫 현시는 칸 시작에서 잘린 나머지다.
 # - 칸이 끝날 때 진행 중이던 현시는 그 파일에 없다(파일 길이 564~902초, 중앙값 873초).
 #   그 현시는 다음 파일의 첫 현시(잘린 나머지)로 이어지고, 칸 경계에서 마침 끝났으면 다음 파일은
 #   길이 0인 그 현시를 적은 뒤 그다음 현시부터 시작한다.
 # 따라서 빈 시간은 '마지막 현시의 다음 순서 현시'로 채워야 시각이 맞는다(경계 1,805개 중 1,766개가
 # 이 규칙과 정확히 맞고, 32개는 2초 겹침, 4개는 딱 맞음, 3개만 순서가 어긋난다).
-# 파일을 그냥 이어 붙이면(replay_phases_spliced) 경계마다 진행 중이던 녹색이 잘리거나 통째로 빠진다.
+# 파일을 그냥 이어 붙이면(v3.2까지의 방식) 경계마다 진행 중이던 녹색이 잘리거나 통째로 빠진다.
 SIGNAL_DROPOUT_RATIO = 1.6     # 같은 현시의 앞뒤 30분 중앙값보다 1.6배 이상이고
 SIGNAL_DROPOUT_EXTRA_S = 40    # 40초 이상 긴 현시는 기록 누락으로 본다(아래 aihub_day_timeline 설명).
 
 
 def _raw_order() -> tuple[list[str], dict[str, str], dict]:
-    info = aihub_states(signal_xml_files("20220810"))  # 녹색 4개·순서는 19일 모두 같다(signal_capacity_check)
+    info = aihub_states(signal_xml_files("20220810"))  # 녹색 4개·순서는 19일 모두 같다(1,824개 파일 확인)
     order = [s for g in info["greens"] for s in (g, info["yellow_of"][g])]
     successor = {s: order[(i + 1) % len(order)] for i, s in enumerate(order)}
     return order, successor, info
@@ -299,7 +297,7 @@ def aihub_day_timeline(date: str) -> tuple[tuple[tuple[float, float, str], ...],
     3. 기록 누락: 같은 현시가 앞뒤 30분 중앙값의 1.6배 이상이면서 40초 이상 길면, 실제로는 신호가
        계속 돌았는데 기록이 빠진 것으로 보고 앞뒤 30분의 중앙값 주기로 채운다. 근거: 20220810
        15:17의 325초 녹색 동안에도 1분 통과 기록에는 석천로 직진·좌회전 차량이 평소 주기대로
-       지나갔다(results/env_audit_20261004). 19일 중 15곳.
+       지나갔다. 19일 중 15곳.
     """
     order, successor, _ = _raw_order()
     files = signal_xml_files(date)
@@ -413,24 +411,21 @@ def _next_date(date: str) -> str:
     return (_dt.date(int(date[:4]), int(date[4:6]), int(date[6:])) + _dt.timedelta(days=1)).strftime("%Y%m%d")
 
 
-def aihub_signal_program(date: str, start_s: float, duration_s: float, variant: str = "aihub_corrected",
-                         uturn_yellow: bool = True) -> list[tuple[int, str]]:
-    """복원한 하루 시간축에서 [start_s, start_s + duration_s) 구간의 신호 프로그램을 만든다.
+def aihub_signal_program(date: str, start_s: float, duration_s: float) -> list[tuple[int, str]]:
+    """복원한 하루 시간축에서 [start_s, start_s + duration_s) 구간의 실제 운영 신호 프로그램을 만든다.
 
-    하루를 넘기면 다음 날 자료가 있으면 이어 쓰고, 없으면 그날 마지막 15분의 완결 주기를 순서대로 반복한다.
-    variant: aihub_corrected(한 현시 밀림 보정, 기준선) 또는 aihub_asis(자료 그대로, 참고).
-    uturn_yellow: 원본 문자열은 좌회전 황색 동안 유턴(11·23번 연결)을 g로 두어 유턴 차량이 황색 없이
-    적색을 받는다. 그런 연결을 황색으로 바꾼다(DQN이 쓰는 SUMO-RL의 황색 규칙과 같다).
+    - 상태는 '한 현시 밀림'으로 보정한다(_corrected_state).
+    - 하루를 넘기면 다음 날 자료가 있으면 이어 쓰고, 없으면 그날 마지막 15분의 완결 주기를 순서대로 반복한다.
+    - 유턴 황색: 원본 문자열은 좌회전 황색 동안 유턴(11·23번 연결)을 g로 두어 유턴 차량이 황색 없이
+      적색을 받는다. 그런 연결을 황색으로 바꾼다(DQN이 쓰는 SUMO-RL의 황색 규칙과 같다).
     """
-    if variant not in ("aihub_corrected", "aihub_asis"):
-        raise ValueError(variant)
     order, successor, info = _raw_order()
     timeline, day, offset = [], date, 0.0
     while True:
         segs, _ = aihub_day_timeline(day)
         timeline += [(s0 + offset, d, s) for s0, d, s in segs]
         offset += 86400
-        following = SIGNALS_ALL / _next_date(day)
+        following = SIGNALS / _next_date(day)
         if offset >= start_s + duration_s or not following.is_dir() or len(list(following.glob("*s.xml"))) != 96:
             break
         day = _next_date(day)
@@ -449,66 +444,17 @@ def aihub_signal_program(date: str, start_s: float, duration_s: float, variant: 
     for s0, d, s in timeline:
         a, b = max(s0, start_s), min(s0 + d, start_s + duration_s)
         if b > a:
-            state = _corrected_state(s, info) if variant == "aihub_corrected" else s
-            phases.append((int(round(b - a)), state))
-    if uturn_yellow:
-        phases = [(d, "".join("y" if a == "g" and b == "r" else a for a, b in zip(s, phases[i + 1][1]))
-                   if "y" in s and i + 1 < len(phases) else s) for i, (d, s) in enumerate(phases)]
-    return phases
+            phases.append((int(round(b - a)), _corrected_state(s, info)))
+    # 유턴 황색(위 설명): 황색 현시에서 다음 현시에 적색이 되는 g 연결을 y로 바꾼다.
+    return [(d, "".join("y" if a == "g" and b == "r" else a for a, b in zip(s, phases[i + 1][1]))
+             if "y" in s and i + 1 < len(phases) else s) for i, (d, s) in enumerate(phases)]
 
 
-def replay_phases(period: str, variant: str, duration: int = 1800, date: str = "20220810") -> list[tuple[int, str]]:
-    """시나리오 시작 시각(period, 예: '0800')부터 duration초 동안의 실제 신호 현시(복원한 시간축)."""
+def replay_phases(period: str, duration: int = 1800, date: str = "20220810") -> list[tuple[int, str]]:
+    """시나리오 시작 시각(period, 예: '0800')부터 duration초 동안의 실제 운영 신호(복원한 시간축)."""
     if period not in signal_xml_files(date):
         raise KeyError(f"{date} {period} 신호 파일이 없습니다.")
-    return aihub_signal_program(date, int(period[:2]) * 3600 + int(period[2:]) * 60, duration, variant)
-
-
-def replay_phases_spliced(period: str, variant: str, duration: int = 1800, date: str = "20220810") -> list[tuple[int, str]]:
-    """[v3.2까지 쓴 방식, 결함 있음 — 재현용] 15분 파일을 그대로 이어 붙인다.
-
-    파일 경계마다 진행 중이던 녹색이 잘리거나 빠지고(1,805개 30분 구간 중 석천로 직진 녹색이 10초 넘게
-    줄어든 구간 518개), 두 번째 15분은 실제 시각과 평균 46.5%만 같은 상태다."""
-    files = signal_xml_files(date)
-    keys = sorted(files)
-    if period not in files:
-        raise KeyError(f"{date} {period} 신호 파일이 없습니다.")
-    info = aihub_states(signal_xml_files("20220810"))  # 녹색 상태·순서는 날짜와 무관하게 같다(검증: signal_capacity_check)
-    start = keys.index(period)
-    sequence: list[tuple[float, str]] = []
-    total = 0.0
-    for key in keys[start:]:
-        for d, s in read_signal_phases(files[key]):
-            if d > 0:
-                sequence.append((d, s))
-                total += d
-        if total >= duration:
-            break
-    # 마지막 시간대 뒤로 넘어가면 같은 날의 처음 시간대부터 반복하지 않고 마지막 주기를 반복한다.
-    while total < duration:
-        tail = sequence[-8:]
-        sequence.extend(tail)
-        total += sum(d for d, _ in tail)
-    if variant == "aihub_corrected":
-        inverse_yellow = {y: g for g, y in info["yellow_of"].items()}
-        mapped = []
-        for d, s in sequence:
-            if s in info["previous"]:
-                mapped.append((d, info["previous"][s]))
-            elif s in inverse_yellow:
-                mapped.append((d, info["yellow_of"][info["previous"][inverse_yellow[s]]]))
-            else:
-                raise ValueError(f"알 수 없는 신호 상태: {s}")
-        sequence = mapped
-    elif variant != "aihub_asis":
-        raise ValueError(variant)
-    out, elapsed = [], 0.0
-    for d, s in sequence:
-        if elapsed >= duration:
-            break
-        out.append((int(round(d)), s))
-        elapsed += d
-    return out
+    return aihub_signal_program(date, int(period[:2]) * 3600 + int(period[2:]) * 60, duration)
 
 
 def write_tls_additional(phases: list[tuple[int, str]], output: Path, program_id: str) -> Path:
@@ -544,8 +490,8 @@ def write_dqn_template_network(output: Path) -> Path:
     return output
 
 
-# 변형별 황색시간(초). 지도 내장 프로그램은 3초, AI Hub 실제 운영은 대부분 4초(한 현시만 3초)다.
-VARIANT_YELLOW = {"embedded": 3, "aihub": 4}
+# DQN·감응식의 황색시간(초). AI Hub 실제 운영은 대부분 4초다(보정 뒤 석천로 직진 황색만 3초).
+AIHUB_YELLOW_S = 4
 
 
 def write_actuated_additional(greens: list[str], output: Path, program_id: str, min_durs: list[int],

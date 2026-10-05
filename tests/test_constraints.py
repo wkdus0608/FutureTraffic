@@ -12,10 +12,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from focused_data import TARGET_TLS, load_counts  # noqa: E402
-from focused_scenario import VARIANT_YELLOW, FocusedNetwork, write_routes  # noqa: E402
+from focused_data import COUNTS, TARGET_TLS, load_counts  # noqa: E402
+from focused_scenario import AIHUB_YELLOW_S, FocusedNetwork, write_routes  # noqa: E402
 
-COUNTS = ROOT / "results/focused_204820/counts_204820.csv"
 SECONDS = 900
 
 
@@ -48,16 +47,15 @@ class ConstraintChecks(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def run_policy(self, variant: str, choose):
-        from focused_experiment import variant_network
+    def run_policy(self, choose):
+        from focused_experiment import dqn_network
         from focused_rl import CROSSWALKS, SignalConstraints, ZoneObservation, pedestrian_service, zone_queue_reward
-        from rl_environment import make_environment
-        env = make_environment(seed=1, net_file=variant_network(variant), route_file=self.route,
+        from focused_sumo import make_environment
+        env = make_environment(seed=1, net_file=dqn_network(), route_file=self.route,
                                simulation_duration_sec=SECONDS, observation_class=ZoneObservation,
-                               reward_fn=zone_queue_reward, record_per_second_queue=True, light_info=True,
-                               record_vehicle_details=False, min_green=15, max_green=120,
-                               yellow_time=VARIANT_YELLOW[variant])
-        rules = SignalConstraints(max_wait=120, pedestrians=True).bind(env)
+                               reward_fn=zone_queue_reward, record_per_second_queue=True,
+                               min_green=15, max_green=120, yellow_time=AIHUB_YELLOW_S)
+        rules = SignalConstraints(max_wait=120).bind(env)
         try:
             obs, _ = env.reset(seed=1)
             self.assertEqual(env.observation_space.shape, obs.shape)
@@ -72,21 +70,18 @@ class ConstraintChecks(unittest.TestCase):
         states = [r["tls_state"] for r in env.per_second_queue_records]
         return rules, states, pedestrian_service(states), CROSSWALKS
 
-    def check(self, variant: str, name: str, choose):
-        rules, states, ped, crosswalks = self.run_policy(variant, choose)
-        greens = [p for p in dict.fromkeys(s for s in states if "y" not in s)]
-        runs = green_runs(states)
-        for state, length in runs:
-            with self.subTest(variant=variant, policy=name, phase=state):
+    def check(self, name: str, choose):
+        from focused_experiment import signal_greens
+        rules, states, ped, crosswalks = self.run_policy(choose)
+        order = signal_greens()
+        for state, length in green_runs(states):
+            with self.subTest(policy=name, phase=state):
                 # 녹색 상태 문자열로 현시 번호를 찾는다.
-                from focused_rl import phase_rules
-                from focused_experiment import variant_greens
-                order = variant_greens(variant)
                 if state in order:
                     self.assertGreaterEqual(length, rules.phase_min[order.index(state)])
                 self.assertLessEqual(length, 120 + 5)
         for crosswalk, m in ped.items():
-            with self.subTest(variant=variant, policy=name, crosswalk=crosswalk):
+            with self.subTest(policy=name, crosswalk=crosswalk):
                 self.assertEqual(m["short_greens"], 0, m)
                 self.assertEqual(m["waits_over_limit"], 0, m)
                 self.assertLessEqual(m["max_wait_s"], crosswalks[crosswalk]["max_wait"], m)
@@ -94,24 +89,23 @@ class ConstraintChecks(unittest.TestCase):
         return rules
 
     def test_adversarial_policies_cannot_break_rules(self):
-        from focused_experiment import variant_greens
+        from focused_experiment import signal_greens
         from focused_rl import phase_rules
-        for variant in ("embedded", "aihub"):
-            _, serving = phase_rules(variant_greens(variant))
-            no_ped = [i for i in range(4) if not any(i in idx for idx in serving.values())]
-            rng = random.Random(7)
-            policies = {
-                "한 현시만 고집(0)": lambda ts: 0,
-                "한 현시만 고집(3)": lambda ts: 3,
-                "매번 다음 현시": lambda ts: (ts.green_phase + 1) % ts.num_green_phases,
-                "무작위": lambda ts: rng.randrange(ts.num_green_phases),
-                "보행자 없는 현시만": lambda ts: no_ped[0] if ts.green_phase != no_ped[0] else no_ped[-1],
-            }
-            for name, choose in policies.items():
-                rules = self.check(variant, name, choose)
-                # 일부러 어기는 정책이므로 제약이 실제로 끼어들었어야 한다.
-                if name.startswith("한 현시") or name.startswith("보행자"):
-                    self.assertGreater(rules.interventions, 0, (variant, name))
+        _, serving = phase_rules(signal_greens())
+        no_ped = [i for i in range(4) if not any(i in idx for idx in serving.values())]
+        rng = random.Random(7)
+        policies = {
+            "한 현시만 고집(0)": lambda ts: 0,
+            "한 현시만 고집(3)": lambda ts: 3,
+            "매번 다음 현시": lambda ts: (ts.green_phase + 1) % ts.num_green_phases,
+            "무작위": lambda ts: rng.randrange(ts.num_green_phases),
+            "보행자 없는 현시만": lambda ts: no_ped[0] if ts.green_phase != no_ped[0] else no_ped[-1],
+        }
+        for name, choose in policies.items():
+            rules = self.check(name, choose)
+            # 일부러 어기는 정책이므로 제약이 실제로 끼어들었어야 한다.
+            if name.startswith("한 현시") or name.startswith("보행자"):
+                self.assertGreater(rules.interventions, 0, name)
 
 
 @unittest.skipUnless(COUNTS.exists(), "counts_204820.csv가 없으면 건너뜀")
@@ -140,14 +134,9 @@ class ArrivalChecks(unittest.TestCase):
             self.assertGreater(thirds[k] / len(departs), 0.20)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 @unittest.skipUnless(COUNTS.exists(), "counts_204820.csv가 없으면 건너뜀")
 class HoldAwareDQNChecks(unittest.TestCase):
     def test_next_value_uses_current_phase_while_holding(self):
-        import numpy as np
         import torch as th
         from focused_rl import hold_aware_dqn_class
         cls = hold_aware_dqn_class()
@@ -160,13 +149,14 @@ class HoldAwareDQNChecks(unittest.TestCase):
         self.assertEqual(values.tolist(), [2.0, 5.0])
 
     def test_replay_buffer_stores_executed_action(self):
+        """학습 기능 확인용 300단계 실행(본 학습 아님)."""
         import numpy as np
         from focused_experiment import RandomScenarioEnv
         from focused_rl import SignalConstraints, hold_aware_dqn_class
         from stable_baselines3.common.monitor import Monitor
         counts = load_counts(COUNTS)
         with tempfile.TemporaryDirectory() as tmp:
-            env = RandomScenarioEnv([("20220810", "0800")], counts, "aihub", 3, Path(tmp),
+            env = RandomScenarioEnv([("20220810", "0800")], counts, 3, Path(tmp),
                                     min_green=15, max_green=120, yellow=4,
                                     constraints=SignalConstraints(max_wait=120))
             model = hold_aware_dqn_class()("MlpPolicy", Monitor(env), learning_starts=50, buffer_size=1000,
@@ -181,3 +171,7 @@ class HoldAwareDQNChecks(unittest.TestCase):
         self.assertGreater(holding.sum(), 50)
         # 최소 녹색 진행 중에는 무엇을 골라도 현재 현시가 유지되므로 저장된 행동 = 현재 현시여야 한다.
         np.testing.assert_array_equal(actions[holding], obs[holding, :4].argmax(axis=1))
+
+
+if __name__ == "__main__":
+    unittest.main()

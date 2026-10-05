@@ -24,14 +24,13 @@ from collections import Counter, defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from focused_data import PROJECT, find_network, load_counts
+from focused_data import COUNTS, PROJECT, find_network, load_counts
 from focused_scenario import (FocusedNetwork, aihub_signal_program, aihub_unreliable_periods, driver_model_version,
                               driver_vtype_attributes, write_routes, write_tls_additional)
 
 PERIOD_S = 900
 DAY_S = 96 * PERIOD_S
 TAIL_S = 1800            # 하루가 끝난 뒤 남은 차량이 빠져나갈 시간
-COUNTS = PROJECT / "results/focused_204820/counts_204820.csv"
 OUT = PROJECT / "results/focused_204820/day"
 # 환경 점검 통과 기준(실제 운영 고정신호, 순간이동 끔).
 # - 실제로는 관측량이 그 15분 안에 교차로를 지나갔으므로, 시뮬레이션이 같은 신호로 따라가지 못해
@@ -232,7 +231,7 @@ def check_day(date: str, out: Path = OUT, seed: int = 42) -> dict:
         last, first = phases[-1][1], phases[0][1]
         phases.append((4, "".join("y" if a in "Gg" and b == "r" else a for a, b in zip(last, first))))
     add = write_tls_additional(phases, run / "tls.add.xml", "aihub_rebuilt")
-    from rl_environment import configure_sumo
+    from focused_sumo import configure_sumo
     configure_sumo()
     import sumolib
     cmd = [sumolib.checkBinary("sumo"), "-n", str(find_network()), "-r", str(route_file), "-a", str(add),

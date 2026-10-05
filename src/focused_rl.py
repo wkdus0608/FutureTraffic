@@ -22,7 +22,7 @@ import math
 import numpy as np
 from gymnasium import spaces
 
-from rl_environment import configure_sumo
+from focused_sumo import configure_sumo
 
 configure_sumo()  # SUMO-RL을 불러오기 전에 SUMO_HOME을 설정한다.
 from sumo_rl.environment.observations import ObservationFunction  # noqa: E402
@@ -65,11 +65,8 @@ def crosswalk_min_green(fn: FocusedNetwork | None = None) -> dict[str, int]:
             for name, c in CROSSWALKS.items()}
 
 
-def phase_rules(greens: list[str], pedestrians: bool = True,
-                min_green: dict[str, int] | None = None) -> tuple[list[int], dict[str, list[int]]]:
+def phase_rules(greens: list[str], min_green: dict[str, int] | None = None) -> tuple[list[int], dict[str, list[int]]]:
     """현시별 최소 녹색(초)과, 횡단보도별로 그 횡단보도를 열어 주는 현시 번호 목록."""
-    if not pedestrians:
-        return [VEHICLE_MIN_GREEN] * len(greens), {}
     min_green = min_green or CROSSWALK_MIN_GREEN
     serving = {name: [i for i, g in enumerate(greens) if all(g[l] == "G" for l in c["links"])]
                for name, c in CROSSWALKS.items()}
@@ -93,7 +90,6 @@ _FN = FocusedNetwork()
 CROSSWALK_MIN_GREEN = crosswalk_min_green(_FN)
 ZONES = build_zones(_FN)
 APPROACHES = sorted(ZONES)
-ZONE_LANES = [lane for lanes in ZONES.values() for lane in lanes]
 # 같은 값을 더 적은 조회로 얻기 위해 도로(edge) 단위로도 묶는다.
 ZONE_EDGES = {a: sorted({l.rsplit("_", 1)[0] for l in lanes}) for a, lanes in ZONES.items()}
 ALL_ZONE_EDGES = [e for edges in ZONE_EDGES.values() for e in edges]
@@ -176,9 +172,8 @@ class SignalConstraints:
     DQN 선택을 바꾼 횟수를 종류별로 센다.
     """
 
-    def __init__(self, max_wait: float = 120.0, pedestrians: bool = True):
+    def __init__(self, max_wait: float = 120.0):
         self.max_wait = max_wait
-        self.pedestrians = pedestrians
         self.phase_min: list[int] = []
         self.serving: dict[str, list[int]] = {}
         self.decisions = self.ped_interventions = self.vehicle_interventions = self.max_green_switches = 0
@@ -191,7 +186,7 @@ class SignalConstraints:
     def bind(self, env) -> "SignalConstraints":
         """환경의 녹색 현시 목록으로 규칙을 만들고 관측 함수가 볼 수 있게 붙인다."""
         greens = [p.state for p in env.traffic_signals[TARGET_TLS].green_phases]
-        self.phase_min, self.serving = phase_rules(greens, self.pedestrians)
+        self.phase_min, self.serving = phase_rules(greens)
         missing = [n for n, idx in self.serving.items() if not idx]
         if missing:
             raise ValueError(f"보행자 횡단을 열어 주는 현시가 없습니다: {missing}")

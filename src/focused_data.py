@@ -1,10 +1,14 @@
-"""석천사거리(204820) 중심 실험에 쓰는 원본 자료를 읽는다.
+"""석천사거리(204820) 실험에 쓰는 자료를 읽는다. 자료 설명: data/README.md
 
-- 회전교통량: GPT가 Drive에서 읽어 둔 `교차로_all` 압축 구간(19일·7,296개 XML)을
-  CRC32로 검증하며 풀고, 204820 진입 도로에서 시작하는 기록만 모은다.
-- 신호: Sample에 있는 2022-08-10 신호 XML(15분 단위 96개)을 읽는다.
-
-원본 파일은 읽기만 하며 바꾸지 않는다.
+data/raw (AI Hub 원본, 읽기만 한다)
+- network/1200012n.net.xml: 부천 도로망 지도(도로·차로·교차로·신호 연결)
+- network/exp.rou.xml: 차종 정의(승용·버스·트럭·이륜)
+- turn_counts/: 19일 × 96개 15분 × 4차종 = 7,296개 회전교통량 XML이 압축된 구간 그대로.
+  꺼낼 때마다 CRC32로 검사한다.
+- signals/<날짜>/: 15분 단위 신호 XML(19일 × 96개)
+data/derived (원본에서 이 파일의 함수로 다시 만들 수 있는 표)
+- counts_204820.csv: 204820 진입 도로에서 시작하는 회전 기록만 모은 표
+- branch_inflow_477748652_01.csv: 서쪽 접근로 4차로 가지로 들어가는 상류 회전 기록
 """
 
 from __future__ import annotations
@@ -12,29 +16,33 @@ from __future__ import annotations
 import csv
 import json
 import struct
-import unicodedata
 import xml.etree.ElementTree as ET
 import zlib
 from collections import defaultdict
 from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parents[1]
+RAW = PROJECT / "data/raw"
+DERIVED = PROJECT / "data/derived"
 TARGET_TLS = "204820"
 # 원본 회전량의 진출 도로 477706911_02는 지도에 없다. 204820에서 그 방향으로 나가는
 # 도로는 477706911_02_02 하나뿐이므로 그 도로로 대응시킨다(조건부 대응, 기록 유지).
 ID_ALIAS = {"477706911_02": "477706911_02_02"}
 VEHICLE_CODES = {"p": "passenger", "b": "bus", "t": "truck", "m": "motorcycle"}
 
-BLOCK = PROJECT / "results/map_demand_plan_20261002/all_turn_xml_compressed_block.bin"
-BLOCK_META = PROJECT / "results/map_demand_plan_20261002/turn_block_metadata.json"
-ENTRIES = PROJECT / "results/network_review_20261002/bucheon_entries.json"
+NETWORK = RAW / "network/1200012n.net.xml"
+VTYPES = RAW / "network/exp.rou.xml"
+BLOCK = RAW / "turn_counts/all_turn_xml_compressed_block.bin"
+BLOCK_META = RAW / "turn_counts/turn_block_metadata.json"
+ENTRIES = RAW / "turn_counts/turn_entries.json"   # Drive 원본 압축의 중앙 목록 중 회전량 XML 7,296개 항목
+SIGNALS = RAW / "signals"
+COUNTS = DERIVED / "counts_204820.csv"
 
 
 def find_network() -> Path:
-    matches = list((PROJECT / "Sample").rglob("1200012n.net.xml"))
-    if len(matches) != 1:
-        raise FileNotFoundError("Sample에서 1200012n.net.xml을 하나만 찾아야 합니다.")
-    return matches[0]
+    if not NETWORK.exists():
+        raise FileNotFoundError(f"지도 파일이 없습니다: {NETWORK}")
+    return NETWORK
 
 
 def target_movements(network: Path) -> dict[tuple[str, str], str]:
@@ -128,9 +136,9 @@ def load_counts(csv_path: Path):
 # 길주로 서쪽 접근로(477707013_02)는 두 갈래에서 들어온다. 4차로 가지(477767666_02_01)로 오는 차량은
 # 상류 송내 신호(cluster_204796_205202)를 지나 477748652_01로 들어가는 회전 기록으로 셀 수 있다.
 # 19일 모두 이 접근로 진입량의 약 46%(15분 시간대 10~90% 범위 34~54%)이고, 나머지는
-# 2차로 가지(477744390_01, 왼쪽 4·5차로로 합류)로 들어온다. results/env_audit_20261004 참고.
+# 2차로 가지(477744390_01, 왼쪽 4·5차로로 합류)로 들어온다. docs/가상도로_정상화_20261004.md 참고.
 BRANCH_INFLOW_EDGE = "477748652_01"
-BRANCH_INFLOW = PROJECT / "results/focused_204820/branch_inflow_477748652_01.csv"
+BRANCH_INFLOW = DERIVED / "branch_inflow_477748652_01.csv"
 
 
 def extract_branch_inflow(output_csv: Path = BRANCH_INFLOW) -> dict:
@@ -156,22 +164,10 @@ def load_branch_inflow(csv_path: Path = BRANCH_INFLOW) -> dict[tuple[str, str], 
         return {(r["date"], r["period"]): int(r["count"]) for r in csv.DictReader(handle)}
 
 
-SIGNALS_ALL = PROJECT / "results/focused_204820/signals_all"
-
-
 def signal_xml_files(date: str = "20220810") -> dict[str, Path]:
-    """해당 날짜의 교차로_all 신호 XML을 {시각: 경로}로 찾는다.
-
-    Drive에서 받아 둔 19일치(signals_all)를 먼저 보고, 없으면 Sample(2022-08-10)을 본다.
-    """
-    folder = SIGNALS_ALL / date
-    if folder.is_dir():
-        return {path.name[14:18]: path for path in sorted(folder.glob("*s.xml"))}
-    found = {}
-    for path in (PROJECT / "Sample").rglob("*s.xml"):
-        if "신호" in unicodedata.normalize("NFC", str(path)) and "/xml/" in str(path) and date in path.name:
-            found[path.name[14:18]] = path
-    return found
+    """해당 날짜의 신호 XML을 {시각(HHMM): 경로}로 돌려준다. 그 날짜 자료가 없으면 빈 사전."""
+    folder = SIGNALS / date
+    return {path.name[14:18]: path for path in sorted(folder.glob("*s.xml"))} if folder.is_dir() else {}
 
 
 def read_signal_phases(path: Path, tls: str = TARGET_TLS) -> list[tuple[float, str]]:
@@ -182,8 +178,9 @@ def read_signal_phases(path: Path, tls: str = TARGET_TLS) -> list[tuple[float, s
 
 
 if __name__ == "__main__":
-    out = PROJECT / "results/focused_204820/counts_204820.csv"
-    summary = extract_target_counts(out)
-    (out.parent / "counts_204820_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2))
+    # 원본(data/raw)에서 data/derived의 두 표를 다시 만든다.
+    summary = extract_target_counts(COUNTS)
+    (COUNTS.parent / "counts_204820_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2))
     print(json.dumps({k: v for k, v in summary.items() if k != "dates"}, ensure_ascii=False, indent=2))
     print("dates:", len(summary["dates"]), summary["dates"][0], "~", summary["dates"][-1])
+    print("branch inflow:", extract_branch_inflow())

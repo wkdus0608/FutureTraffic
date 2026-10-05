@@ -1,4 +1,4 @@
-"""AI Hub 신호를 하루 시간축으로 복원하는 코드의 검사 (results/env_audit_20261004 참고)."""
+"""AI Hub 신호를 하루 시간축으로 복원하는 코드의 검사 (docs/가상도로_정상화_20261004.md 참고)."""
 import json
 import sys
 import unittest
@@ -7,9 +7,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from focused_data import SIGNALS_ALL, read_signal_phases, signal_xml_files  # noqa: E402
+from focused_data import SIGNALS, read_signal_phases, signal_xml_files  # noqa: E402
 from focused_scenario import (aihub_day_timeline, aihub_signal_program, aihub_unreliable_periods,  # noqa: E402
-                              replay_phases, replay_phases_spliced)
+                              replay_phases)
 
 SPLIT = json.loads((ROOT / "config/focused_split.json").read_text())
 DATES = sorted(set(SPLIT["train"] + SPLIT["validation"] + SPLIT["test"]))
@@ -22,7 +22,7 @@ def per_second(phases):
     return out
 
 
-@unittest.skipUnless((SIGNALS_ALL / "20220810").is_dir(), "19일 신호 자료(signals_all)가 없으면 건너뜀")
+@unittest.skipUnless((SIGNALS / "20220810").is_dir(), "19일 신호 자료(data/raw/signals)가 없으면 건너뜀")
 class SignalTimelineChecks(unittest.TestCase):
     def test_every_day_is_continuous_and_exactly_one_day(self):
         for date in DATES:
@@ -61,19 +61,18 @@ class SignalTimelineChecks(unittest.TestCase):
         self.assertEqual(aihub_unreliable_periods("20220810"), ["1515", "1530"])
 
     def test_episode_program_covers_duration_and_beyond_midnight(self):
-        phases = replay_phases("2345", "aihub_corrected", date="20220810")
+        phases = replay_phases("2345", date="20220810")
         self.assertEqual(sum(d for d, _ in phases), 1800)
-        phases = replay_phases("2345", "aihub_corrected", date="20220814")   # 다음 날 자료 없음 → 마지막 주기 반복
+        phases = replay_phases("2345", date="20220814")   # 다음 날 자료 없음 → 마지막 주기 반복
         self.assertEqual(sum(d for d, _ in phases), 1800)
 
-    def test_first_quarter_matches_old_splicing_and_second_does_not_drift(self):
-        """처음 15분은 예전 이어붙이기와 거의 같다. 두 번째 15분은 예전 방식만 실제 시각에서 벗어난다."""
-        new = per_second(replay_phases("0800", "aihub_corrected", date="20220810"))
-        old = per_second(replay_phases_spliced("0800", "aihub_corrected", date="20220810"))[:1800]
-        same_first = sum(a.replace("y", "g") == b.replace("y", "g") for a, b in zip(new[:820], old[:820])) / 820
-        self.assertGreater(same_first, 0.99)
+    def test_window_program_is_exact_slice_of_day_program(self):
+        """30분 실행의 신호는 하루 시간축의 같은 구간과 1초도 다르지 않다(파일 경계에서 밀리지 않음)."""
         day = per_second(aihub_signal_program("20220810", 0, 86400))
-        self.assertEqual(new, day[8 * 3600:8 * 3600 + 1800])
+        for period in ("0800", "1745"):
+            start = int(period[:2]) * 3600 + int(period[2:]) * 60
+            window = per_second(replay_phases(period, date="20220810"))
+            self.assertEqual(window, day[start:start + 1800], period)
 
 
 if __name__ == "__main__":

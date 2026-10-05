@@ -9,11 +9,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from focused_data import find_network, load_counts  # noqa: E402
+from focused_data import COUNTS, find_network, load_counts  # noqa: E402
 from focused_scenario import (FocusedNetwork, aihub_states, replay_phases,  # noqa: E402
                               write_dqn_template_network, write_routes)
-
-COUNTS = ROOT / "results/focused_204820/counts_204820.csv"
 
 
 @unittest.skipUnless(COUNTS.exists(), "counts_204820.csv가 없으면 건너뜀")
@@ -90,9 +88,10 @@ class FocusedScenarioChecks(unittest.TestCase):
 
     def test_corrected_replay_uses_same_green_states(self):
         info = aihub_states()
-        states = {s for _, s in replay_phases("0800", "aihub_corrected") if "y" not in s}
+        phases = replay_phases("0800")
+        states = {s for _, s in phases if "y" not in s}
         self.assertTrue(states <= set(info["greens"]))
-        self.assertGreaterEqual(sum(d for d, _ in replay_phases("0800", "aihub_corrected")), 1800)
+        self.assertGreaterEqual(sum(d for d, _ in phases), 1800)
 
 
 if __name__ == "__main__":

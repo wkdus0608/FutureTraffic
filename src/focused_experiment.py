@@ -1,19 +1,18 @@
-"""석천사거리(204820) 중심 실험: 학습·평가·보고.
+"""석천사거리(204820) 실험: DQN 학습·정책 평가·보고.
+
+비교하는 정책 셋 (모두 같은 차량 파일·같은 운전자 설정·같은 평가 seed)
+- fixed: 고정신호 = AI Hub 실제 운영 신호("한 현시 밀림" 보정, 하루 시간축 복원)
+- actuated: 감응식 = 실제 신호의 녹색 4개를 차량 감지에 따라 늘이고 줄임(참고 기준)
+- dqn: DQN = 실제 신호의 녹색 4개 중 하나를 5초마다 고름(운영 제약 적용)
+
+주의(2026-10-05): docs/석천사거리_전체점검_20261005.md 5.2절의 결함을 고치기 전에는 본 학습·평가에
+쓰지 않는다. 특히 지금 평가는 30분 단위(빈 도로에서 시작)이고, 결과 폴더가 있으면 다시 계산하지 않는다.
 
 사용 예
 -------
-.venv/bin/python src/focused_experiment.py train --variant embedded --seed 42 --timesteps 100000
-.venv/bin/python src/focused_experiment.py train --variant aihub --seed 42 --timesteps 100000
-.venv/bin/python src/focused_experiment.py evaluate --date 20220810 --workers 6
-.venv/bin/python src/focused_experiment.py report --date 20220810
-
-변형(variant)
-- embedded: 지도 내장 신호. DQN도 내장 신호의 녹색 4개를 행동으로 쓴다.
-- aihub: AI Hub 실제 운영 신호. DQN은 실제 신호의 녹색 4개를 행동으로 쓴다.
-  고정신호 기준선은 "한 현시 밀림" 보정본(aihub_corrected)이다. 자료 그대로(aihub_asis)는 참고용.
-
-학습은 시험 날짜(기본 2022-08-10)를 제외한 18일의 15분 시간대를 무작위로 뽑아 진행한다.
-평가는 시험 날짜의 96개 시간대 전체에서 같은 차량 파일로 모든 정책을 비교한다.
+.venv/bin/python src/focused_experiment.py train --seed 42 --timesteps 100000
+.venv/bin/python src/focused_experiment.py evaluate --date 20220928 --workers 6
+.venv/bin/python src/focused_experiment.py report --dates 20220928
 """
 
 from __future__ import annotations
@@ -31,28 +30,24 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import gymnasium as gym
-import numpy as np
 
-from focused_data import PROJECT, TARGET_TLS, find_network, load_counts, signal_xml_files
-from focused_scenario import (ARRIVAL_WINDOW_S, ENTRY_BRANCHES, VARIANT_YELLOW, FocusedNetwork, aihub_states,
-                              driver_vtype_attributes, replay_phases,
-                              write_actuated_additional, write_dqn_template_network, write_routes,
-                              write_tls_additional)
+from focused_data import COUNTS, PROJECT, TARGET_TLS, find_network, load_counts, signal_xml_files
+from focused_scenario import (AIHUB_YELLOW_S, ARRIVAL_WINDOW_S, ENTRY_BRANCHES, FocusedNetwork, aihub_states,
+                              driver_vtype_attributes, replay_phases, write_actuated_additional,
+                              write_dqn_template_network, write_routes, write_tls_additional)
 
-DATA = PROJECT / "results/focused_204820"   # 입력(기록·신호·틀 지도) 위치
-OUT = DATA                                    # 기본 출력 위치(--out으로 바꿀 수 있다)
-COUNTS = DATA / "counts_204820.csv"
-TEMPLATE_NET = DATA / "net_aihub_template.net.xml"
+OUT = PROJECT / "results/focused_204820"            # 기본 출력 위치(--out으로 바꿀 수 있다)
+TEMPLATE_NET = OUT / "net_aihub_template.net.xml"   # DQN용 틀 지도(없으면 만든다)
+SPLIT_FILE = PROJECT / "config/focused_split.json"
 DURATION = 1800
 # v4_env (2026-10-04): 가상 도로 정상화 — 실제 신호를 하루 시간축으로 복원(파일 경계·기록 누락·유턴 황색),
 # 길주로 서쪽 접근로(477707013_02) 차량을 상류 기록대로 두 갈래에 나눔, 운전자 설정(config/driver_model.json)을 모든 정책에 같게.
-# v3.2 이전 모델은 다른 환경에서 학습했으므로 평가·이어 학습에서 거부한다.
+# v3.2 이전 모델은 다른 환경에서 학습했으므로 평가에서 거부한다.
 EXPERIMENT_VERSION = "focused_204820_v4_env"
 
 
-def variant_network(variant: str) -> Path:
-    if variant == "embedded":
-        return find_network()
+def dqn_network() -> Path:
+    """DQN용 지도: 원본 지도에서 204820 신호 프로그램만 실제 신호의 녹색 4개 틀로 바꾼 사본."""
     if not TEMPLATE_NET.exists():
         write_dqn_template_network(TEMPLATE_NET)
     return TEMPLATE_NET
@@ -62,33 +57,25 @@ def route_seed(date: str, period: str) -> int:
     return int(date) * 10_000 + int(period)
 
 
-def variant_greens(variant: str) -> list[str]:
-    """변형별 녹색 현시 4개 (지도 내장 또는 AI Hub 실제 운영)."""
-    if variant == "aihub":
-        return aihub_states()["greens"]
-    import xml.etree.ElementTree as ET
-    logic = ET.parse(find_network()).getroot().find(f"tlLogic[@id='{TARGET_TLS}']")
-    return [p.get("state") for p in logic.findall("phase") if "y" not in p.get("state")]
+def signal_greens() -> list[str]:
+    """실제 운영 신호의 녹색 현시 4개(DQN의 행동 4개)."""
+    return aihub_states()["greens"]
 
 
-def actuated_plan(variant: str, period: str, date: str) -> tuple[list[str], list[int], list[int]]:
+def actuated_plan(period: str, date: str) -> tuple[list[str], list[int], list[int]]:
     """감응식 기준선의 현시·최소·최대 녹색.
 
     최소 = DQN과 같은 운영 제약(보행자 횡단 46/33초, 그 밖 15초).
-    최대 = aihub: 그 시간대 실제 운영 녹색(중앙값) × 1.25. 실제 계획을 감응식으로 돌린 형태다.
-           embedded: 지도 내장 계획은 좌회전 6초처럼 현실 근거가 없어서 DQN과 같은 120초.
+    최대 = 그 시간대 실제 운영 녹색(중앙값) × 1.25. 실제 계획을 감응식으로 돌린 형태다.
     """
     from focused_rl import phase_rules
-    greens = variant_greens(variant)
+    greens = signal_greens()
     mins, _ = phase_rules(greens)
-    if variant == "aihub":
-        durations = defaultdict(list)
-        for d, s in replay_phases(period, "aihub_corrected", date=date)[1:]:
-            durations[s].append(d)
-        maxes = [max(m, round(1.25 * statistics.median(durations[g]))) if durations[g] else m
-                 for m, g in zip(mins, greens)]
-    else:
-        maxes = [120] * len(greens)
+    durations = defaultdict(list)
+    for d, s in replay_phases(period, date=date)[1:]:
+        durations[s].append(d)
+    maxes = [max(m, round(1.25 * statistics.median(durations[g]))) if durations[g] else m
+             for m, g in zip(mins, greens)]
     return greens, mins, maxes
 
 
@@ -97,14 +84,14 @@ def actuated_plan(variant: str, period: str, date: str) -> tuple[list[str], list
 class RandomScenarioEnv(gym.Env):
     """에피소드마다 학습 날짜의 15분 시간대 하나를 무작위로 골라 새 SUMO를 연다."""
 
-    def __init__(self, scenarios: list[tuple[str, str]], counts, variant: str, seed: int, workdir: Path,
-                 min_green: int = 15, max_green: int = 120, yellow: int = 3, constraints=None):
+    def __init__(self, scenarios: list[tuple[str, str]], counts, seed: int, workdir: Path,
+                 min_green: int = 15, max_green: int = 120, yellow: int = AIHUB_YELLOW_S, constraints=None):
         super().__init__()
-        from rl_environment import make_environment
+        from focused_sumo import make_environment
         self.make_environment = make_environment
         self.scenarios = scenarios
         self.counts = counts
-        self.net = variant_network(variant)
+        self.net = dqn_network()
         self.rng = random.Random(seed)
         self.seed_base = seed
         self.episode = 0
@@ -133,8 +120,7 @@ class RandomScenarioEnv(gym.Env):
         return self.make_environment(seed=self.seed_base + self.episode, net_file=self.net,
                                      route_file=route, simulation_duration_sec=DURATION,
                                      observation_class=ZoneObservation, reward_fn=zone_queue_reward,
-                                     light_info=True, min_green=self.min_green, max_green=self.max_green,
-                                     yellow_time=self.yellow)
+                                     min_green=self.min_green, max_green=self.max_green, yellow_time=self.yellow)
 
     def reset(self, *, seed=None, options=None):
         if self.started:
@@ -163,30 +149,23 @@ class RandomScenarioEnv(gym.Env):
 def train(args) -> None:
     import torch
     torch.set_num_threads(1)  # 여러 학습을 동시에 돌리므로 프로세스당 1개 코어만 쓴다.
+    from stable_baselines3.common.callbacks import CheckpointCallback
     from stable_baselines3.common.monitor import Monitor
 
-    from focused_rl import hold_aware_dqn_class
+    from focused_rl import CROSSWALK_MIN_GREEN, CROSSWALKS, SignalConstraints, hold_aware_dqn_class
     DQN = hold_aware_dqn_class()
 
-    from stable_baselines3.common.callbacks import CheckpointCallback
-
     counts = load_counts(COUNTS)
-    if args.split_file:
-        split = json.loads(Path(args.split_file).read_text())
-        train_dates = set(split["train"])
-    else:
-        train_dates = {d for d, _ in counts} - {args.test_date}
+    # 학습 날짜는 항상 분할 파일의 train만 쓴다(시험·검증 날짜가 섞이지 않게).
+    split = json.loads(Path(args.split_file).read_text())
+    train_dates = set(split["train"])
     scenarios = sorted(k for k, rows in counts.items() if k[0] in train_dates and rows)
-    out = Path(args.out) / f"dqn_{args.variant}" / f"seed_{args.seed}"
+    out = Path(args.out) / "dqn" / f"seed_{args.seed}"
     out.mkdir(parents=True, exist_ok=True)
-    if args.yellow is None:
-        args.yellow = VARIANT_YELLOW[args.variant]
-    from focused_rl import CROSSWALK_MIN_GREEN, CROSSWALKS, SignalConstraints
-    constraints = SignalConstraints(max_wait=args.max_wait, pedestrians=not args.no_pedestrians)
-    workdir = Path(tempfile.mkdtemp(prefix=f"focused_{args.variant}_{args.seed}_"))
-    env = RandomScenarioEnv(scenarios, counts, args.variant, args.seed, workdir,
-                            min_green=args.min_green, max_green=args.max_green, yellow=args.yellow,
-                            constraints=constraints)
+    constraints = SignalConstraints(max_wait=args.max_wait)
+    workdir = Path(tempfile.mkdtemp(prefix=f"focused_dqn_{args.seed}_"))
+    env = RandomScenarioEnv(scenarios, counts, args.seed, workdir, min_green=args.min_green,
+                            max_green=args.max_green, yellow=args.yellow, constraints=constraints)
     monitored = Monitor(env, filename=str(out / "monitor.csv"))
     model = DQN(policy="MlpPolicy", env=monitored, learning_rate=1e-3, buffer_size=100_000,
                 learning_starts=1_000, batch_size=64, train_freq=4, target_update_interval=5_000,
@@ -199,10 +178,10 @@ def train(args) -> None:
     model.save(out / f"dqn_{TARGET_TLS}")
     monitored.close()
     config = {
-        "experiment_version": EXPERIMENT_VERSION, "variant": args.variant, "seed": args.seed,
-        "timesteps": args.timesteps, "train_dates": sorted(train_dates),
+        "experiment_version": EXPERIMENT_VERSION, "seed": args.seed,
+        "timesteps": args.timesteps, "split_file": str(args.split_file), "train_dates": sorted(train_dates),
         "training_scenarios_available": len(scenarios), "episodes": len(env.history),
-        "scenarios_used": env.history, "network": str(variant_network(args.variant)),
+        "scenarios_used": env.history, "network": str(dqn_network()),
         "arrival_window_s": ARRIVAL_WINDOW_S,
         "driver_model_vtype_attributes": driver_vtype_attributes(),
         "entry_branches": ENTRY_BRANCHES,
@@ -214,8 +193,7 @@ def train(args) -> None:
                 "algorithm": "HoldAwareDQN: replay stores executed action; next value uses current phase "
                              "while minimum green is running"},
         "signal_constraints": {
-            "pedestrians": constraints.pedestrians, "max_wait_s": args.max_wait,
-            "phase_min_green_s": constraints.phase_min,
+            "max_wait_s": args.max_wait, "phase_min_green_s": constraints.phase_min,
             "crosswalks": {n: {"min_green_s": CROSSWALK_MIN_GREEN[n], "max_wait_s": c["max_wait"],
                                "phases": constraints.serving.get(n, [])} for n, c in CROSSWALKS.items()},
             "decisions": constraints.decisions, "ped_interventions": constraints.ped_interventions,
@@ -232,90 +210,61 @@ def train(args) -> None:
 
 # ------------------------------------------------------------------ 평가
 
-POLICIES = {
-    # 이름: (지도 변형, 종류, 신호 프로그램)
-    # 종류 fixed = SUMO가 신호 프로그램대로 운영, random/dqn = 5초마다 녹색 현시를 고름(운영 제약 적용)
-    "fixed_embedded": ("embedded", "fixed", None),
-    "fixed_aihub_corrected": ("embedded", "fixed", "aihub_corrected"),
-    "fixed_aihub_asis": ("embedded", "fixed", "aihub_asis"),
-    "actuated_embedded": ("embedded", "fixed", "actuated_embedded"),
-    "actuated_aihub": ("embedded", "fixed", "actuated_aihub"),
-    "random_embedded": ("embedded", "random", None),
-    "random_aihub": ("aihub", "random", None),
-    "dqn_embedded": ("embedded", "dqn", None),
-    "dqn_aihub": ("aihub", "dqn", None),
-}
-# 무작위 신호에 씌우는 운영 제약 = DQN 학습 기본값과 같다.
-RANDOM_RULES = {"min_green": 15, "max_green": 120, "max_wait_s": 120.0, "pedestrians": True}
+# 이름: 종류. fixed 종류는 SUMO가 신호 프로그램대로 운영하고, dqn은 5초마다 녹색 현시를 고른다(운영 제약 적용).
+POLICIES = {"fixed": "fixed", "actuated": "fixed", "dqn": "dqn"}
 
 
 def run_job(job: dict) -> dict:
     import xml.etree.ElementTree as ET
-    from evaluate_policies import make_sumo_output_command, parse_statistics, parse_tripinfo
     from focused_rl import ALL_ZONE_EDGES, ZoneObservation, pedestrian_service, zone_queue_reward
-    from rl_environment import make_environment
+    from focused_sumo import make_environment, parse_statistics, parse_tripinfo, sumo_output_options
 
     policy, date, period, eval_seed = job["policy"], job["date"], job["period"], job["eval_seed"]
-    variant, kind, replay = POLICIES[policy]
+    kind = POLICIES[policy]
     fixed = kind == "fixed"
     run_dir = Path(job["run_dir"])
     run_dir.mkdir(parents=True, exist_ok=True)
-    command, tripinfo, stats = make_sumo_output_command(run_dir)
+    command, tripinfo, stats = sumo_output_options(run_dir)
     vehroute = (run_dir / "vehroute.xml").resolve()
     command += (f" --vehroute-output {vehroute} --vehroute-output.exit-times true"
                 " --vehroute-output.write-unfinished true")
-    if replay and replay.startswith("actuated_"):
-        variant_of_plan = replay.split("_", 1)[1]
-        greens, mins, maxes = actuated_plan(variant_of_plan, period, date)
-        add = write_actuated_additional(greens, run_dir / "tls.add.xml", replay, mins, maxes,
-                                        VARIANT_YELLOW[variant_of_plan])
+    if policy == "actuated":
+        greens, mins, maxes = actuated_plan(period, date)
+        add = write_actuated_additional(greens, run_dir / "tls.add.xml", "actuated", mins, maxes, AIHUB_YELLOW_S)
         command += f" --additional-files {add}"
-    elif replay:
-        add = write_tls_additional(replay_phases(period, replay, date=date), run_dir / "tls.add.xml", replay)
+    elif policy == "fixed":
+        add = write_tls_additional(replay_phases(period, date=date), run_dir / "tls.add.xml", "aihub_corrected")
         command += f" --additional-files {add}"
     green = {"min_green": 15, "max_green": 120}
     guard = None
-    if kind == "random":
-        from focused_rl import SignalConstraints
-        green = {"min_green": RANDOM_RULES["min_green"], "max_green": RANDOM_RULES["max_green"],
-                 "yellow_time": VARIANT_YELLOW[variant]}
-        guard = SignalConstraints(max_wait=RANDOM_RULES["max_wait_s"], pedestrians=RANDOM_RULES["pedestrians"])
-    elif kind == "dqn":
+    if kind == "dqn":
         trained = json.loads((Path(job["model"]).parent / "training_config.json").read_text())
         if trained.get("experiment_version") != EXPERIMENT_VERSION:
             raise SystemExit(f"{job['model']}: {trained.get('experiment_version')} 모델은 지금 코드"
                              f"({EXPERIMENT_VERSION})의 관측과 맞지 않습니다. 다시 학습하세요.")
         green = {k: trained["environment"][k] for k in green}
         green["yellow_time"] = trained["environment"]["yellow_time"]
-        rules = trained["signal_constraints"]
         from focused_rl import SignalConstraints
-        guard = SignalConstraints(max_wait=rules["max_wait_s"], pedestrians=rules["pedestrians"])
+        guard = SignalConstraints(max_wait=trained["signal_constraints"]["max_wait_s"])
     env = make_environment(seed=eval_seed, fixed_ts=fixed, additional_sumo_cmd=command,
-                           record_per_second_queue=True, net_file=variant_network(variant),
+                           record_per_second_queue=True, net_file=find_network() if fixed else dqn_network(),
                            route_file=Path(job["route_file"]), simulation_duration_sec=DURATION,
                            observation_class=ZoneObservation, reward_fn=zone_queue_reward,
-                           extra_queue_edges=ALL_ZONE_EDGES, light_info=True,
-                           record_vehicle_details=False, **green)
+                           extra_queue_edges=ALL_ZONE_EDGES, **green)
     if guard is not None:
         guard.bind(env)
     model = None
     if kind == "dqn":
         from stable_baselines3 import DQN
         model = DQN.load(job["model"])
-    rng = random.Random(eval_seed)
     actions = Counter()
     try:
         obs, _ = env.reset(seed=eval_seed)
         done = False
         while not done:
             action = None
-            if kind != "fixed":
-                if model is not None:
-                    action = int(model.predict(obs, deterministic=True)[0])
-                else:
-                    action = rng.randrange(env.action_space.n)
-                if guard is not None:
-                    action = guard(env, action)
+            if model is not None:
+                action = guard(env, int(model.predict(obs, deterministic=True)[0]))
                 actions[action] += 1
             obs, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
@@ -424,17 +373,16 @@ def evaluate(args) -> None:
             info = write_routes(fn, rows, tmp, seed=route_seed(args.date, period))
             tmp.replace(route)
         for policy in args.policies:
-            variant, kind, replay = POLICIES[policy]
-            if replay and period not in available_signals:
+            if POLICIES[policy] == "fixed" and period not in available_signals:
                 continue
-            for train_seed in (args.train_seeds if kind == "dqn" else [None]):
+            for train_seed in (args.train_seeds if policy == "dqn" else [None]):
                 for eval_seed in args.eval_seeds:
-                    tag = f"{policy}_train{train_seed}_eval{eval_seed}" if kind == "dqn" else f"{policy}_eval{eval_seed}"
+                    tag = f"{policy}_train{train_seed}_eval{eval_seed}" if policy == "dqn" else f"{policy}_eval{eval_seed}"
                     job = {"policy": policy, "date": args.date, "period": period, "eval_seed": eval_seed,
                            "train_seed": train_seed, "route_file": str(route), "vehicles": info["vehicles"],
                            "run_dir": str(out / "runs" / period / tag), "keep_raw": args.keep_raw}
-                    if kind == "dqn":
-                        job["model"] = str(Path(args.out) / f"dqn_{variant}" / f"seed_{train_seed}" / f"dqn_{TARGET_TLS}.zip")
+                    if policy == "dqn":
+                        job["model"] = str(Path(args.out) / "dqn" / f"seed_{train_seed}" / f"dqn_{TARGET_TLS}.zip")
                     jobs.append(job)
     todo = [j for j in jobs if not (Path(j["run_dir"]) / "metrics.json").exists()]
     print(f"평가 실행 {len(jobs)}개 중 새로 실행 {len(todo)}개 (시간대 {len(periods)}, 정책 {len(args.policies)})")
@@ -463,18 +411,11 @@ def evaluate(args) -> None:
 BANDS = [("심야 00~06시", 0, 6), ("오전 첨두 07~09시", 7, 9), ("낮 10~15시", 10, 15),
          ("오후 첨두 16~19시", 16, 19), ("저녁 20~23시", 20, 23)]
 LABELS = {
-    "fixed_embedded": "고정신호 — 지도 내장",
-    "fixed_aihub_corrected": "고정신호 — 실제 운영(보정)",
-    "fixed_aihub_asis": "고정신호 — 실제 신호 자료 그대로(참고)",
-    "actuated_embedded": "감응식 — 내장 신호 현시(참고)",
-    "actuated_aihub": "감응식 — 실제 신호 현시(참고)",
-    "random_embedded": "무작위 — 내장 신호 현시",
-    "random_aihub": "무작위 — 실제 신호 현시",
-    "dqn_embedded": "DQN — 내장 신호 현시",
-    "dqn_aihub": "DQN — 실제 신호 현시",
+    "fixed": "고정신호 — 실제 운영(보정)",
+    "actuated": "감응식 — 실제 신호 현시(참고)",
+    "dqn": "DQN — 실제 신호 현시",
 }
-ORDER = ["fixed_aihub_corrected", "actuated_aihub", "random_aihub", "dqn_aihub",
-         "fixed_embedded", "actuated_embedded", "random_embedded", "dqn_embedded", "fixed_aihub_asis"]
+ORDER = ["fixed", "actuated", "dqn"]
 
 
 def _num(r, k):
@@ -524,14 +465,14 @@ SEED_AVG_COUNT = ("not_arrived", "waiting_over_300s", "ped_over_limit")
 
 
 def summarize(rows: list[dict]) -> dict:
-    """정책별 요약. 학습 정책(DQN)은 학습 seed별로 계산한 뒤 평균 ± 표준편차를 낸다.
+    """정책별 요약. DQN은 학습 seed별로 계산한 뒤 평균 ± 표준편차를 낸다.
     개수 지표는 하루 1회 실행인 다른 정책과 같은 기준이 되도록 seed당 평균이다."""
     groups = defaultdict(list)
     for r in rows:
         groups[r["policy"]].append(r)
     summary = {}
     for policy, rs in groups.items():
-        if POLICIES[policy][1] != "dqn":
+        if POLICIES[policy] != "dqn":
             summary[policy] = _day_metrics(rs)
             continue
         by_seed = defaultdict(list)
@@ -557,7 +498,7 @@ def summarize(rows: list[dict]) -> dict:
     return summary
 
 
-def validate_demand(out: Path, policy: str = "fixed_aihub_corrected") -> dict:
+def validate_demand(out: Path, policy: str = "fixed") -> dict:
     """수요 검증을 세 가지로 나눠 본다.
 
     1. 입력 일치: 차량 파일의 이동별 15분 교통량이 기록과 같은가(구성상 같아야 한다).
@@ -604,8 +545,7 @@ def _movements():
     return _MOVES
 
 
-PAIRS = [("dqn_aihub", "fixed_aihub_corrected"), ("dqn_aihub", "actuated_aihub"), ("dqn_aihub", "random_aihub"),
-         ("dqn_embedded", "fixed_embedded"), ("dqn_embedded", "actuated_embedded"), ("dqn_embedded", "random_embedded")]
+PAIRS = [("dqn", "fixed"), ("dqn", "actuated")]
 
 
 def paired(rows: list[dict]) -> list[str]:
@@ -672,24 +612,24 @@ def report(args) -> None:
         summary = summarize(rows)
         validation = validate_demand(out)
         out_json[date] = {"summary": summary, "validation": validation}
-        sections += [f"## 시험 날짜 {date}", ""] + _table(summary) + [
+        sections += [f"## 날짜 {date}", ""] + _table(summary) + [
             "", f"수요 검증(고정신호 — 실제 운영): 이동별 15분 교통량 입력 일치 {validation['movement_15min_input_match']}, "
                 f"15분 안 통과 {validation['crossed_within_15min_pct']}%, 실행 끝까지 통과 {validation['crossed_by_end_pct']}%", ""]
     combined = summarize(all_rows)
     out_json["combined"] = combined
-    lines = [f"# 석천사거리(204820) 실험 결과 — 시험 날짜 {', '.join(args.dates)}", "",
+    lines = [f"# 석천사거리(204820) 실험 결과 — 날짜 {', '.join(args.dates)}", "",
              "모든 정책이 같은 차량 파일(15분 교통량을 15분 동안 무작위 도착)을 쓴다. DQN은 학습 seed별 결과의 평균 ± 표준편차이고,",
-             "개수 지표는 seed당 평균이다. 무작위·DQN에는 같은 운영 제약(보행 최소 녹색·보행 최대 대기·최대 녹색·차량 최대 대기)이 걸린다.",
+             "개수 지표는 seed당 평균이다. DQN에는 운영 제약(보행 최소 녹색·보행 최대 대기·최대 녹색·차량 최대 대기)이 걸린다.",
              "보행 지표는 실제 보행자를 움직인 것이 아니라, 보행자가 평행 직진 신호와 같이 건넌다고 가정하고 신호만으로 잰 값이다.", "",
-             "## 시험 날짜 전체", ""] + _table(combined) + [""]
+             "## 날짜 전체", ""] + _table(combined) + [""]
     over = [f"{LABELS[p]}: 보행 {combined[p]['override_pct']['ped']:.2f}% · 차량 {combined[p]['override_pct']['vehicle']:.2f}%"
             for p in ORDER if p in combined and "override_pct" in combined[p]]
     if over:
         lines += ["운영 제약이 정책의 선택을 바꾼 비율 — " + "; ".join(over), ""]
     pair_lines = paired(all_rows)
     if pair_lines:
-        lines += ["## 같은 시간대끼리 짝지은 비교 (시험 날짜 전체)", ""] + pair_lines + [""]
-    lines += ["## 시간대별 차량당 평균 지연(초, 시험 날짜 전체)", "", "| 정책 | " + " | ".join(b[0] for b in BANDS) + " |",
+        lines += ["## 같은 시간대끼리 짝지은 비교 (날짜 전체)", ""] + pair_lines + [""]
+    lines += ["## 시간대별 차량당 평균 지연(초, 날짜 전체)", "", "| 정책 | " + " | ".join(b[0] for b in BANDS) + " |",
               "|---|" + "---:|" * len(BANDS)]
     for policy in [p for p in ORDER if p in combined]:
         lines.append(f"| {LABELS[policy]} | " + " | ".join(f"{combined[policy]['band_delay_s'][b[0]]:.1f}" for b in BANDS) + " |")
@@ -704,21 +644,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     t = sub.add_parser("train")
-    t.add_argument("--variant", choices=("embedded", "aihub"), required=True)
     t.add_argument("--seed", type=int, default=42)
     t.add_argument("--timesteps", type=int, default=100_000)
-    t.add_argument("--test-date", default="20220810")
-    t.add_argument("--split-file", help="train/validation/test 날짜 JSON. 주면 train 날짜만 학습")
+    t.add_argument("--split-file", default=str(SPLIT_FILE), help="train/validation/test 날짜 JSON. train 날짜만 학습한다")
     t.add_argument("--min-green", type=int, default=15, help="보행자 횡단이 없는 현시의 최소 녹색(초)")
     t.add_argument("--max-green", type=int, default=120)
     t.add_argument("--checkpoint-freq", type=int, default=0)
     t.add_argument("--max-wait", type=float, default=120, help="차량 최대 대기 보장(초). 0이면 끔")
-    t.add_argument("--no-pedestrians", action="store_true", help="보행자 최소 녹색·최대 대기 제약을 끈다(비교용)")
-    t.add_argument("--yellow", type=int, default=None,
-                   help="DQN 황색시간(초). 생략하면 변형의 실제 값(embedded 3, aihub 4)")
+    t.add_argument("--yellow", type=int, default=AIHUB_YELLOW_S, help="DQN 황색시간(초). 실제 운영 신호는 대부분 4초")
     t.add_argument("--out", default=str(OUT))
     e = sub.add_parser("evaluate")
-    e.add_argument("--date", default="20220810")
+    e.add_argument("--date", required=True)
     e.add_argument("--policies", nargs="+", default=list(POLICIES), choices=list(POLICIES))
     e.add_argument("--periods", nargs="*")
     e.add_argument("--eval-seeds", nargs="+", type=int, default=[42])
@@ -727,7 +663,7 @@ def main() -> None:
     e.add_argument("--out", default=str(OUT))
     e.add_argument("--keep-raw", action="store_true", help="tripinfo·vehroute 원본 XML을 지우지 않는다")
     r = sub.add_parser("report")
-    r.add_argument("--dates", nargs="+", default=["20220810"])
+    r.add_argument("--dates", nargs="+", required=True)
     r.add_argument("--out", default=str(OUT))
     args = parser.parse_args()
     {"train": train, "evaluate": evaluate, "report": report}[args.command](args)
