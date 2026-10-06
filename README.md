@@ -15,27 +15,29 @@ AI Hub 71572의 부천 교통량으로 석천사거리(신호 번호 `204820`)�
 ## 지금 단계 (2026-10-05)
 
 - 석천사거리 단독 모형으로 진행한다. 12개 교차로 전체 모형은 보류(포기 아님).
-- 가상 도로 점검 완료: 학습·검증 15일을 하루씩 끊지 않고 돌려도 교착·충돌·순간이동 없이 실제 통과량을 따라간다.
-- 비교 전에 고칠 것이 남아 있다([전체 점검](docs/석천사거리_전체점검_20261005.md) 5.2절). **고치기 전에는 본 학습·평가를 하지 않는다.**
+- 가상 도로 점검 완료: 학습·검증 15일을 하루씩 끊지 않고 돌려도 교착·순간이동 없이 실제 통과량을 따라가고, 확인 안 된 충돌도 없다(원인을 확인한 지도 오류 겹침 2건만 따로 센다).
+- v5: 점검에서 찾은 결함 7건을 고치고 결정 4가지를 반영했다([수정 내역](docs/수정내역_v5_20261005.md)). 10-06: 충돌 판정을 바로잡았다(교차로 밖 충돌도 모두 세고, 원인을 확인한 지도 오류 1종만 따로 셈). 다음은 환경 잠금([실험 설정 한 장](docs/실험설정_v5.md)) → DQN 학습이다. **DQN 본 학습은 아직 하지 않았다.**
 - 쓰지 않는 코드·자료·예전 결과는 프로젝트 밖 `../자주프_보관_20261005/`로 옮겼다(지우지 않음).
 
 ## 폴더
 
 ```
 config/   driver_model.json(운전자 설정) · focused_split.json(학습13·검증2·시험4일 분할)
+          vehicle_wait_rule.json(차량 최대 누적 대기 165초) · collision_exceptions.json(원인을 확인한 지도 오류 충돌 목록)
 data/     raw(AI Hub 원본: 지도·회전교통량·신호) · derived(원본에서 다시 만드는 표) — data/README.md
 src/      focused_data.py      자료 읽기
           focused_scenario.py  차량 파일 만들기 · 실제 신호 복원
           focused_sumo.py      SUMO 실행 도구
           focused_day.py       하루 연속 환경 점검(고정신호)
           focused_rl.py        DQN이 보는 것·행동 규칙·보상
-          focused_experiment.py  DQN 학습 · 정책 평가 · 보고
+          focused_train.py     DQN 학습(대기열이 있는 상태에서 시작, 끊기면 이어서)
+          focused_eval.py      하루 연속 평가·보고(고정신호·감응식·DQN) · 충돌 판정
           focused_view.py      SUMO 화면으로 장면 보기
           focused_package.py   Colab용 묶음(zip) 만들기
-tests/    자동 검사 16개
-notebooks/ FutureTraffic_Colab.ipynb(Colab에서 설치·검사·재현성 확인)
-docs/     설계 쉬운 설명 · 전체 점검 · 가상 도로 정상화 · 중간보고
-results/  focused_204820/day/check(15일 환경 점검 결과) · claude_audit_20261005(점검 기록)
+tests/    자동 검사 28개
+notebooks/ FutureTraffic_Colab.ipynb(Colab에서 설치·검사·재현성 확인·학습·평가)
+docs/     종합 보고 · 설계 쉬운 설명 · 수정 내역(v5) · 실험 설정 한 장 · 전체 점검 · 가상 도로 정상화 · 중간보고
+results/  focused_204820/day(15일 환경 점검) · eval(평가, 지문별 폴더) · models(학습) · cache · claude_audit_20261005(점검 기록)
 ```
 
 ## 자주 쓰는 명령
@@ -52,8 +54,26 @@ results/  focused_204820/day/check(15일 환경 점검 결과) · claude_audit_2
 .venv/bin/python src/focused_data.py
 ```
 
-- 첫째: 자동 검사(약 50초). 둘째: 실제 운영 신호로 하루를 돌려 가상 도로를 점검(하루 약 1~2분). 셋째: 원본에서 `data/derived` 표를 다시 만든다.
+- 첫째: 자동 검사(약 2분). 둘째: 실제 운영 신호로 하루를 돌려 가상 도로를 점검(하루 약 1~2분). 셋째: 원본에서 `data/derived` 표를 다시 만든다.
 - 시험 날짜(08-10, 10-28, 08-21, 09-10)는 설정을 고르는 데 쓰지 않는다.
+
+평가와 학습(긴 실행은 Colab에서):
+
+```bash
+.venv/bin/python src/focused_eval.py run --dates 20220928 20220813 --policies fixed actuated --workers 4
+```
+
+```bash
+.venv/bin/python src/focused_eval.py report --dates 20220928 20220813
+```
+
+```bash
+.venv/bin/python src/focused_train.py --seed 42 --timesteps 100000 --resume
+```
+
+- 평가는 하루를 끊지 않고 돌린다(하루 한 정책 약 4~5분). 결과는 `results/focused_204820/eval/<평가 지문>/`에 쌓이고, 코드·설정·자료가 바뀌면 지문이 바뀌어 새로 계산한다.
+- 학습은 모델 하나에 이 맥에서 약 70분(100,000단계)이다. `--resume`이면 끊긴 곳에서 이어서 한다. DQN 평가는 `--policies dqn --models results/focused_204820/models/seed_42`처럼 학습 폴더를 준다.
+- DQN 결과는 모델 파일 지문별 폴더에 쌓인다(모델을 바꾸면 새로 평가). 보고에 DQN을 넣을 때도 `--models`로 비교할 모델을 준다. 날짜 × 정책(DQN은 모델마다) 가운데 하나라도 빠지면 보고서를 만들지 않는다.
 
 ## SUMO 화면으로 보기 (이 맥에서)
 

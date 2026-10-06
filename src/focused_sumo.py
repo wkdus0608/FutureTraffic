@@ -28,6 +28,13 @@ def configure_sumo() -> None:
     os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
 
 
+# 교차로 안 충돌까지 검사한다. warn은 충돌을 경고로 남기기만 하고 차량을 치우지 않는다. 기본값(teleport)이나
+# remove는 부딪힌 차를 옮기거나 지워 교통을 바꾸고, 충돌을 낸 정책의 정체를 줄여 주기까지 한다. 그래서 warn으로
+# 모든 정책이 같은 교통을 유지하고, 충돌은 기록 파일로 따로 판정한다(focused_eval.judge_collisions).
+# 차가 그대로 움직였다는 것은 충돌이 무해하다는 증거가 아니다.
+COLLISION_OPTIONS = "--collision.check-junctions true --collision.action warn"
+
+
 def make_environment(*, net_file: Path, route_file: Path, simulation_duration_sec: int, observation_class,
                      reward_fn, seed: int = 42, fixed_ts: bool = False, additional_sumo_cmd: str | None = None,
                      record_per_second_queue: bool = False, extra_queue_edges: list[str] | None = None,
@@ -38,6 +45,9 @@ def make_environment(*, net_file: Path, route_file: Path, simulation_duration_se
         5초마다 받은 행동(녹색 현시 번호)으로 신호를 바꾼다(DQN).
     record_per_second_queue: True이면 매초 대기행렬·진입 대기·신호 상태를 기록한다(평가용).
     순간이동은 끄고(-1), 도로에 들어오지 못한 차량도 버리지 않는다(SUMO-RL 기본값).
+    대기열이 있는 상태에서 시작하려면 reset 전에 env.warmup_states(1초마다의 실제 신호 상태)와
+    env.warmup_handover(넘겨받을 녹색 상태)를 넣는다. reset이 그 시간만큼 실제 신호로 돌린 뒤,
+    그 녹색이 막 켜진 상태로 넘겨받는다.
     """
     for path in (net_file, route_file):
         if not Path(path).exists():
@@ -45,54 +55,96 @@ def make_environment(*, net_file: Path, route_file: Path, simulation_duration_se
     configure_sumo()
     from sumo_rl import SumoEnvironment
 
-    class PerSecondQueueEnvironment(SumoEnvironment):
-        """5초 행동 사이의 1~4초 대기행렬까지 남기는 평가용 환경. 신호 선택·보상은 바꾸지 않는다."""
+    class FocusedEnvironment(SumoEnvironment):
+        warmup_states: list[str] = []
+        warmup_handover: str | None = None
+
+        def reset(self, *args, **kwargs):
+            observation, info = super().reset(*args, **kwargs)
+            if not self.warmup_states:
+                return observation, info
+            ts = self.traffic_signals[TARGET_TLS]
+            for state in self.warmup_states:          # 실제 신호로 1초씩 돌려 대기열을 만든다
+                self.sumo.trafficlight.setRedYellowGreenState(TARGET_TLS, state)
+                self._sumo_step()
+            greens = [p.state for p in ts.green_phases]
+            ts.green_phase = greens.index(self.warmup_handover)
+            ts.is_yellow = False
+            ts.time_since_last_phase_change = 0
+            ts.next_action_time = self.sim_step
+            self.sumo.trafficlight.setRedYellowGreenState(TARGET_TLS, self.warmup_handover)
+            return self._compute_observations()[self.ts_ids[0]], self._compute_info()
+
+    class PerSecondQueueEnvironment(FocusedEnvironment):
+        """매초 신호 상태·감지 구간 정지 차량·진입 대기 차량을 남기는 평가용 환경. 신호 선택·보상은 바꾸지 않는다.
+
+        감지 구간 도로의 정지 차량 수와 신호 상태는 SUMO '구독'으로 한 번에 받아(매초 수십 번 묻지 않고)
+        하루 연속 평가를 빠르게 한다. 값은 직접 묻는 것과 같다.
+        """
 
         def __init__(self, *args, **kwargs):
             self.per_second_queue_records: list[dict] = []
+            self._subscribed = False
             super().__init__(*args, **kwargs)
 
         def reset(self, *args, **kwargs):
             self.per_second_queue_records.clear()
+            self._subscribed = False          # SUMO를 새로 시작하므로 구독도 새로 한다
             return super().reset(*args, **kwargs)
 
         def _sumo_step(self) -> None:
+            import traci.constants as tc
+            if not self._subscribed:
+                for edge in extra_queue_edges or []:
+                    self.sumo.edge.subscribe(edge, [tc.LAST_STEP_VEHICLE_HALTING_NUMBER])
+                self.sumo.trafficlight.subscribe(TARGET_TLS, [tc.TL_RED_YELLOW_GREEN_STATE])
+                self._subscribed = True
             super()._sumo_step()   # SUMO를 정확히 1초 진행한다.
-            traffic_signal = self.traffic_signals[TARGET_TLS]
+            halting = self.sumo.edge.getAllSubscriptionResults()
             self.per_second_queue_records.append({
                 "simulation_time_sec": float(self.sim_step),
-                "local_queue_vehicles": int(traffic_signal.get_total_queued()),
-                "tls_state": self.sumo.trafficlight.getRedYellowGreenState(TARGET_TLS),
-                "zone_queue_vehicles": (sum(self.sumo.edge.getLastStepHaltingNumber(e) for e in extra_queue_edges)
+                "tls_state": self.sumo.trafficlight.getSubscriptionResults(TARGET_TLS)[tc.TL_RED_YELLOW_GREEN_STATE],
+                "zone_queue_vehicles": (sum(v[tc.LAST_STEP_VEHICLE_HALTING_NUMBER] for v in halting.values())
                                         if extra_queue_edges else None),
                 # 출발 시각이 지났지만 대기열 때문에 도로에 들어오지 못한 차량 수
                 "pending_vehicles": len(self.sumo.simulation.getPendingVehicles()),
             })
 
-    environment_class = PerSecondQueueEnvironment if record_per_second_queue else SumoEnvironment
+    environment_class = PerSecondQueueEnvironment if record_per_second_queue else FocusedEnvironment
     return environment_class(
         add_system_info=False, add_per_agent_info=False, observation_class=observation_class,
         net_file=str(Path(net_file).resolve()), route_file=str(Path(route_file).resolve()), out_csv_name=None,
         single_agent=True, ts_ids=[TARGET_TLS], use_gui=False, num_seconds=simulation_duration_sec,
         delta_time=ACTION_INTERVAL_SEC, yellow_time=yellow_time, min_green=min_green, max_green=max_green,
         enforce_max_green=True, reward_fn=reward_fn, sumo_seed=seed, fixed_ts=fixed_ts, sumo_warnings=False,
-        additional_sumo_cmd=additional_sumo_cmd,
+        additional_sumo_cmd=" ".join(x for x in (COLLISION_OPTIONS, additional_sumo_cmd) if x),
     )
 
 
 # ------------------------------------------------------------------ SUMO 결과 파일
 def sumo_output_options(run_dir: Path) -> tuple[str, Path, Path]:
-    """차량별 결과(tripinfo)와 안전 통계(statistics)를 남기는 SUMO 옵션."""
+    """차량별 결과(tripinfo), 안전 통계(statistics), 충돌 기록(collisions.xml)을 남기는 SUMO 옵션."""
     tripinfo = (run_dir / "tripinfo.xml").resolve()
-    summary = (run_dir / "summary.xml").resolve()
     statistics_file = (run_dir / "statistics.xml").resolve()
-    for path in (tripinfo, summary, statistics_file):
+    collisions = (run_dir / "collisions.xml").resolve()
+    for path in (tripinfo, statistics_file, collisions):
         if " " in str(path):
             raise ValueError(f"평가 출력 경로에 공백을 쓸 수 없습니다: {path}")
     command = " ".join(["--tripinfo-output", str(tripinfo), "--tripinfo-output.write-unfinished", "true",
-                        "--summary-output", str(summary), "--statistic-output", str(statistics_file),
+                        "--statistic-output", str(statistics_file),
+                        "--collision-output", str(collisions),
                         "--duration-log.statistics", "true", "--no-step-log", "true"])
     return command, tripinfo, statistics_file
+
+
+def parse_collisions(path: Path) -> list[dict]:
+    """충돌 기록 파일의 충돌을 모두 읽는다(시각·종류·차로·두 차량·차종·속도·앞뒤 좌표). 판정은 focused_eval.judge_collisions.
+
+    파일이 없으면 충돌 검사가 돌지 않은 것이므로 '충돌 0'으로 보지 않고 멈춘다.
+    """
+    if not Path(path).exists():
+        raise FileNotFoundError(f"충돌 기록 파일이 없습니다(충돌 검사가 돌지 않음): {path}")
+    return [dict(c.attrib) for c in ET.parse(path).getroot().iter("collision")]
 
 
 def _mean(values: list[float]) -> float:

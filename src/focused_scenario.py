@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import copy
 import functools
+import json
 import random
 import statistics
 import xml.etree.ElementTree as ET
@@ -44,14 +45,12 @@ DRIVER_MODEL = PROJECT / "config/driver_model.json"
 
 
 def driver_vtype_attributes() -> dict[str, str]:
-    import json
     if not DRIVER_MODEL.exists():
         return {}
     return {k: str(v) for k, v in json.loads(DRIVER_MODEL.read_text())["vtype_attributes"].items()}
 
 
 def driver_model_version() -> str:
-    import json
     if not DRIVER_MODEL.exists():
         return "sumo_default"
     return json.loads(DRIVER_MODEL.read_text())["version"]
@@ -233,6 +232,70 @@ def write_routes(fn: FocusedNetwork, rows: list[dict], output: Path, seed: int,
     tree.write(output, encoding="utf-8", xml_declaration=True)
     return {"vehicles": len(vehicles), "movements": len({k[:2] for k in routes}), "routes": len(routes),
             "entry_branch_shares": shares}
+
+
+def route_seed(date: str, period: str) -> int:
+    """날짜·15분 시간대마다 고정된 난수. 같은 시간대는 어느 실험에서든 같은 차량이 나온다."""
+    return int(date) * 10_000 + int(period)
+
+
+def period_start_s(period: str) -> int:
+    return int(period[:2]) * 3600 + int(period[2:]) * 60
+
+
+def period_of_time(t: float) -> str:
+    return f"{int(t // 3600):02d}{int(t % 3600 // 900) * 15:02d}"
+
+
+def window_route_file(date: str, start_s: int, end_s: int, output: Path, origin_s: int | None = None,
+                      counts: dict | None = None) -> dict[str, str]:
+    """[start_s, end_s)에 걸친 15분 시간대들의 차량을 한 파일로 합친다. 돌려주는 값은 {차량 ID: 시간대}.
+
+    시간대마다 write_routes(같은 난수)를 쓰므로, 어느 창으로 잘라도 같은 시간대의 차량은 같다.
+    origin_s: 파일 안 시각 0초에 해당하는 하루 중 시각(초). 기본은 start_s가 속한 15분의 시작.
+    """
+    from focused_data import COUNTS, load_counts
+    counts = counts if counts is not None else load_counts(COUNTS)
+    fn = FocusedNetwork()
+    first = start_s // 900 * 900
+    origin = first if origin_s is None else origin_s
+    root = ET.Element("routes")
+    routes, vehicles, period_of = {}, [], {}
+    tmp = output.with_suffix(".tmp.xml")
+    for period in sorted(p for d, p in counts if d == date and first <= period_start_s(p) < end_s):
+        write_routes(fn, counts[(date, period)], tmp, seed=route_seed(date, period),
+                     time_offset=period_start_s(period) - origin)
+        part = ET.parse(tmp).getroot()
+        if not root.findall("vType"):
+            root.extend(part.findall("vType"))
+        local = {r.get("id"): r.get("edges") for r in part.findall("route")}
+        for edges in local.values():
+            routes.setdefault(edges, f"r{len(routes)}")
+        for v in part.findall("vehicle"):
+            vid = f"{period}_{v.get('id')}"
+            period_of[vid] = period
+            vehicles.append((float(v.get("depart")), vid, v.get("type"), routes[local[v.get("route")]]))
+    tmp.unlink(missing_ok=True)
+    for edges, rid in routes.items():
+        ET.SubElement(root, "route", id=rid, edges=edges)
+    for depart, vid, vtype, rid in sorted(vehicles):
+        ET.SubElement(root, "vehicle", id=vid, type=vtype, route=rid, depart=f"{depart:.2f}",
+                      departLane="best", departSpeed="max")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    ET.ElementTree(root).write(output, encoding="utf-8", xml_declaration=True)
+    return period_of
+
+
+def day_route_file(date: str, cache_dir: Path) -> tuple[Path, dict[str, str]]:
+    """하루(00:00~24:00) 차량 파일. 환경 지문별로 따로 두므로 조건이 바뀌면 새로 만든다."""
+    from focused_data import environment_fingerprint
+    path = cache_dir / f"day_{date}_{environment_fingerprint()}.rou.xml"
+    periods_json = path.with_suffix(".periods.json")
+    if path.exists() and periods_json.exists():
+        return path, json.loads(periods_json.read_text())
+    period_of = window_route_file(date, 0, 86400, path, origin_s=0)
+    periods_json.write_text(json.dumps(period_of))
+    return path, period_of
 
 
 # ---------------------------------------------------------------- 신호
@@ -450,6 +513,16 @@ def aihub_signal_program(date: str, start_s: float, duration_s: float) -> list[t
              if "y" in s and i + 1 < len(phases) else s) for i, (d, s) in enumerate(phases)]
 
 
+def real_signal_states(date: str, start_s: int, duration_s: int) -> list[str]:
+    """실제 운영 신호를 1초마다의 상태 목록으로 돌려준다(학습 에피소드 시작 전 대기열을 만들 때 쓴다)."""
+    return [s for d, s in aihub_signal_program(date, start_s, duration_s) for _ in range(d)]
+
+
+def signal_greens() -> list[str]:
+    """실제 운영 신호의 녹색 현시 4개(DQN의 행동 4개, 감응식의 현시 순서)."""
+    return aihub_states()["greens"]
+
+
 def replay_phases(period: str, duration: int = 1800, date: str = "20220810") -> list[tuple[int, str]]:
     """시나리오 시작 시각(period, 예: '0800')부터 duration초 동안의 실제 운영 신호(복원한 시간축)."""
     if period not in signal_xml_files(date):
@@ -480,14 +553,30 @@ def write_dqn_template_network(output: Path) -> Path:
     end = text.index("</tlLogic>", start) + len("</tlLogic>")
     indent = "\n" + " " * 8
     phases = []
-    for g in info["greens"]:
+    greens = info["greens"]
+    for i, g in enumerate(greens):
+        # 황색 = 다음 녹색에서 적색이 되는 연결(유턴 포함)을 y로. SUMO-RL이 실행 때 만드는 황색과 같은 방식이다.
+        # (이 틀의 녹색 순서 프로그램은 SUMO-RL이 시작할 때 바꿔 끼우므로 실제로 돌지는 않는다.)
+        nxt = greens[(i + 1) % len(greens)]
+        yellow = "".join("y" if a in "Gg" and b in "rs" else a for a, b in zip(g, nxt))
         phases.append(f'<phase duration="30" state="{g}"/>')
-        phases.append(f'<phase duration="3" state="{info["yellow_of"][g]}"/>')
+        phases.append(f'<phase duration="3" state="{yellow}"/>')
     attrs = " ".join(f'{k}="{v}"' for k, v in logic.attrib.items())
     block = f"<tlLogic {attrs}>" + "".join(indent + p for p in phases) + "\n    </tlLogic>"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(text[:start] + block + text[end:], encoding="utf-8")
     return output
+
+
+def dqn_template_network(cache_dir: Path) -> Path:
+    """DQN용 지도(204820 프로그램만 실제 신호의 녹색 4개 틀로 바꾼 사본). 환경 지문별로 따로 둔다."""
+    from focused_data import environment_fingerprint
+    path = cache_dir / f"net_dqn_template_{environment_fingerprint()}.net.xml"
+    if not path.exists():
+        tmp = path.with_suffix(".tmp.xml")
+        write_dqn_template_network(tmp)
+        tmp.replace(path)
+    return path
 
 
 # DQN·감응식의 황색시간(초). AI Hub 실제 운영은 대부분 4초다(보정 뒤 석천로 직진 황색만 3초).

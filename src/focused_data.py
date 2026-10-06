@@ -14,6 +14,7 @@ data/derived (원본에서 이 파일의 함수로 다시 만들 수 있는 표)
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import struct
 import xml.etree.ElementTree as ET
@@ -43,6 +44,29 @@ def find_network() -> Path:
     if not NETWORK.exists():
         raise FileNotFoundError(f"지도 파일이 없습니다: {NETWORK}")
     return NETWORK
+
+
+# ------------------------------------------------------------------ 환경 지문
+# 가상 도로(차량·운전자·신호·DQN이 보는 것·규칙)를 정하는 파일. 하나라도 바뀌면 지문이 바뀌고,
+# 지문이 다른 캐시·결과·모델은 다시 쓰지 않는다(예전 결과가 새 결과처럼 쓰이는 것을 막는다).
+ENV_FILES = [
+    "src/focused_data.py", "src/focused_scenario.py", "src/focused_sumo.py", "src/focused_rl.py",
+    "config/driver_model.json", "config/focused_split.json", "config/vehicle_wait_rule.json",
+    "data/raw/manifest.json", "data/derived/counts_204820.csv", "data/derived/branch_inflow_477748652_01.csv",
+]
+
+
+def fingerprint(paths: list[str]) -> str:
+    """파일 이름과 내용으로 만든 짧은 지문(12자리)."""
+    h = hashlib.sha256()
+    for rel in paths:
+        h.update(rel.encode())
+        h.update(hashlib.sha256((PROJECT / rel).read_bytes()).digest())
+    return h.hexdigest()[:12]
+
+
+def environment_fingerprint() -> str:
+    return fingerprint(ENV_FILES)
 
 
 def target_movements(network: Path) -> dict[tuple[str, str], str]:

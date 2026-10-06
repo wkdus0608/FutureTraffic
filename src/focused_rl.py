@@ -1,23 +1,29 @@
-"""석천사거리 중심 실험의 관측·보상·운영 제약 정의 (v3).
+"""석천사거리 중심 실험의 관측·보상·운영 제약 정의 (v5).
 
 감지 구간
     진입로마다 정지선에서 차량 경로가 시작되는 곳(상류 최대 300m, 다음 신호나 차로가
-    절반 미만으로 줄기 전)까지. 이 지도는 교차로 직전 도로가 11~19m로 잘게 나뉘어
-    있어서 SUMO-RL 기본 관측(진입 차로만 봄)은 정지선 앞 2~3대만 센다.
+    절반 미만으로 줄기 전)까지. 서쪽 접근로는 두 갈래(4차로 가지 + 584m 2차로 가지)를 모두 본다.
+    이 지도는 교차로 직전 도로가 11~19m로 잘게 나뉘어 있어서 SUMO-RL 기본 관측(진입 차로만 봄)은
+    정지선 앞 2~3대만 센다.
 진입 대기 차량
     대기열이 경로 시작점까지 차서 출발 시각이 지났는데도 도로에 들어오지 못한 차량.
     v2까지는 관측·보상 어디에도 없어서, 짧은 진입로(석천로 58m)가 넘치면 DQN이 몰랐다.
 보상
     -0.1 × (감지 구간의 정지 차량 + 진입 대기 차량)
 운영 제약(SignalConstraints)
-    보행자 최소 녹색, 보행자 최대 대기, 차량 최대 대기. 실제 신호 운영에서 지켜야 하는
+    최소 녹색, 보행자 최대 대기, 최대 녹색, 차량 최대 누적 대기. 실제 신호 운영에서 지켜야 하는
     규칙이라 DQN이 어길 수 없게 행동을 바로잡고, 바로잡은 횟수를 따로 센다.
+    관측 끝 4칸은 다음 판단에서 바뀌지 않고 그대로 실행될 행동 표시(1/0)다. 학습기는 이 표시로
+    실행할 수 없는 행동을 미래 가치 계산에서 뺀다.
 """
 
 from __future__ import annotations
 
 import itertools
+import json
 import math
+from collections import Counter
+from pathlib import Path
 
 import numpy as np
 from gymnasium import spaces
@@ -28,7 +34,7 @@ configure_sumo()  # SUMO-RL을 불러오기 전에 SUMO_HOME을 설정한다.
 from sumo_rl.environment.observations import ObservationFunction  # noqa: E402
 
 from focused_data import TARGET_TLS  # noqa: E402
-from focused_scenario import UPSTREAM_LIMIT_M, FocusedNetwork  # noqa: E402
+from focused_scenario import ENTRY_BRANCHES, UPSTREAM_LIMIT_M, FocusedNetwork  # noqa: E402
 
 VEHICLE_SPACING_M = 7.5
 REWARD_SCALE = 0.1
@@ -82,6 +88,8 @@ def build_zones(fn: FocusedNetwork | None = None) -> dict[str, list[str]]:
     zones = {}
     for approach in sorted({a for a, _ in fn.movements}):
         edges = fn._chain(approach, True, UPSTREAM_LIMIT_M) + [approach]
+        if approach in ENTRY_BRANCHES:   # 다른 갈래로 들어오는 차량의 경로 시작 도로도 본다
+            edges = [ENTRY_BRANCHES[approach]["alternative"]] + edges
         zones[approach] = [lane.get("id") for e in edges for lane in fn.edges[e].findall("lane")]
     return zones
 
@@ -93,6 +101,10 @@ APPROACHES = sorted(ZONES)
 # 같은 값을 더 적은 조회로 얻기 위해 도로(edge) 단위로도 묶는다.
 ZONE_EDGES = {a: sorted({l.rsplit("_", 1)[0] for l in lanes}) for a, lanes in ZONES.items()}
 ALL_ZONE_EDGES = [e for edges in ZONE_EDGES.values() for e in edges]
+# 이동(진입 도로, 진출 도로)별 신호 연결 번호
+MOVEMENT_LINKS: dict[tuple[str, str], list[int]] = {}
+for _i, (_a, _b, _d) in sorted(_FN.links.items()):
+    MOVEMENT_LINKS.setdefault((_a, _b), []).append(_i)
 
 
 def _capacity(ts, lanes: list[str]) -> float:
@@ -114,7 +126,7 @@ def pending_by_approach(ts) -> dict[str, int]:
 
 class ZoneObservation(ObservationFunction):
     """관측 = 현시 · 최소녹색 충족 · 녹색 경과 · 진입 차로 밀도/대기 · 진입로별 감지 구간의
-    차량/정지 비율 · 진입 대기 비율 · 횡단보도별 보행자 대기 비율."""
+    차량/정지 비율 · 진입 대기 비율 · 횡단보도별 보행자 대기 비율 · 그대로 실행될 행동 표시."""
 
     def __init__(self, ts):
         super().__init__(ts)
@@ -138,12 +150,14 @@ class ZoneObservation(ObservationFunction):
         waiting = [min(1.0, pending[a] / self._capacity[a]) for a in APPROACHES]
         ped = [min(1.0, rules.ped_wait(name, ts) / CROSSWALKS[name]["max_wait"]) if rules and rules.serving else 0.0
                for name in CROSSWALKS]
+        allowed = rules.allowed(ts.env) if rules else list(range(ts.num_green_phases))
+        mask = [1 if i in allowed else 0 for i in range(ts.num_green_phases)]
         obs = (phase + min_green + elapsed + ts.get_lanes_density() + ts.get_lanes_queue()
-               + zone + waiting + ped)
+               + zone + waiting + ped + mask)
         return np.array(obs, dtype=np.float32)
 
     def observation_space(self) -> spaces.Box:
-        size = (self.ts.num_green_phases + 2 + 2 * len(self.ts.lanes) + 3 * len(ZONES) + len(CROSSWALKS))
+        size = (2 * self.ts.num_green_phases + 2 + 2 * len(self.ts.lanes) + 3 * len(ZONES) + len(CROSSWALKS))
         return spaces.Box(low=np.zeros(size, dtype=np.float32), high=np.ones(size, dtype=np.float32))
 
 
@@ -157,6 +171,14 @@ def zone_queue_reward(ts) -> float:
 
 
 # ------------------------------------------------------------------ 운영 제약
+# 차량 최대 누적 대기(초). 실제 운영 고정신호(학습·검증 15일)에서 차량별 누적 대기
+# (진입 전 대기 + 도로에서 멈춰 있던 시간 합)의 99% 값을 5초 단위로 올린 값이다(config/vehicle_wait_rule.json).
+# 실제 운영보다 차량을 더 오래 세우지 않게 한다.
+VEHICLE_WAIT_RULE = Path(__file__).resolve().parents[1] / "config/vehicle_wait_rule.json"
+VEHICLE_MAX_WAIT_S = (json.loads(VEHICLE_WAIT_RULE.read_text())["max_cumulative_wait_s"]
+                      if VEHICLE_WAIT_RULE.exists() else None)
+
+
 class SignalConstraints:
     """DQN의 선택에 실제 신호 운영 규칙을 씌운다.
 
@@ -167,17 +189,24 @@ class SignalConstraints:
        있는지 미리 계산해(최소 녹색 때문에 바로 못 바꾸는 시간 포함) 그런 행동만 허용한다.
     3. 최대 녹색: 같은 현시를 max_green 넘게 유지하지 않는다. SUMO-RL의 자동 전환(다음
        번호 현시로 넘김)이 보행자 규칙을 모르고 끼어들지 않도록 이 규칙이 먼저 바꾼다.
-    4. 차량 최대 대기: 정지선 앞 차량이 max_wait초 이상 멈춰 있으면 그 차량의 신호를
-       주는 현시로 바꾼다(1~3을 어기지 않을 때만).
-    DQN 선택을 바꾼 횟수를 종류별로 센다.
+    4. 차량 최대 누적 대기: 감지 구간 전체와 진입 대기 차량 가운데 누적 대기(진입 전 대기 +
+       도로에서 멈춰 있던 시간 합, 조금 움직여도 0으로 돌아가지 않음)가 max_wait초 이상인 차량이
+       있으면 그 차량의 신호를 주는 현시로 바꾼다(1~3을 어기지 않을 때만).
+    allowed()는 바뀌지 않고 그대로 실행될 행동 목록이다(관측 끝 4칸). DQN은 이 안에서만 고르므로 규칙이 DQN
+    선택을 바꿀 일은 없다. 바꾸면(ped·vehicle·max_green) 그 수를 센다(있으면 안 됨, 규칙 검사용 정책은 예외).
+    규칙이 선택지를 하나만 남긴 판단은 이유별로 센다(rule_decided: hold·ped·vehicle·max_green).
     """
 
-    def __init__(self, max_wait: float = 120.0):
-        self.max_wait = max_wait
+    def __init__(self, max_wait: float | None = None):
+        self.max_wait = VEHICLE_MAX_WAIT_S if max_wait is None else max_wait
         self.phase_min: list[int] = []
         self.serving: dict[str, list[int]] = {}
         self.decisions = self.ped_interventions = self.vehicle_interventions = self.max_green_switches = 0
+        self.rule_decided: Counter = Counter()
         self.last_served: dict[str, float] = {}
+        self._phases_of: dict[str, tuple[int, ...]] = {}
+        self._wait_seen: dict[str, tuple[float, float]] = {}
+        self._overdue_at: tuple[float | None, list[float]] = (None, [])
 
     @property
     def interventions(self) -> int:
@@ -194,9 +223,12 @@ class SignalConstraints:
         self.reset()
         return self
 
-    def reset(self) -> None:
-        """새 에피소드: 모든 횡단보도가 시작 직전에 열렸던 것으로 본다."""
-        self.last_served = dict.fromkeys(self.serving, 0.0)
+    def reset(self, last_served: dict[str, float] | None = None) -> None:
+        """새 에피소드. last_served를 주지 않으면 모든 횡단보도가 시작 직전에 열렸던 것으로 본다."""
+        self.last_served = dict.fromkeys(self.serving, 0.0) if last_served is None else dict(last_served)
+        self._phases_of = {}
+        self._wait_seen = {}
+        self._overdue_at = (None, [])
 
     def ped_wait(self, name: str, ts) -> float:
         if ts.green_phase in self.serving[name] and not ts.is_yellow:
@@ -225,9 +257,9 @@ class SignalConstraints:
             best = min(best, worst)
         return best
 
-    def _outcome(self, ts, current: int, action: int, now: float) -> float:
+    def _outcome(self, ts, current: int, action: int, now: float, served: dict[str, float]) -> float:
         """행동 하나를 골랐을 때의 보행자 지각 시간(위 _lateness, 지금 여는 횡단보도 포함)."""
-        ends = dict(self.last_served)
+        ends = dict(served)
         if action == current:
             return self._lateness(ts, current, now + ts.env.delta_time, ends)
         for c, idx in self.serving.items():
@@ -238,68 +270,116 @@ class SignalConstraints:
                        default=-math.inf)
         return max(late_now, self._lateness(ts, action, now + self._hold(ts, action), ends))
 
-    def __call__(self, env, action) -> int:
-        ts = env.traffic_signals[TARGET_TLS]
-        now = env.sim_step
-        action = int(action)
-        self.decisions += 1
-        current = ts.green_phase
+    def _served_now(self, ts, now: float) -> dict[str, float]:
+        """지금 시각까지 반영한 횡단보도별 마지막 보행 녹색 시각(지금 보행 녹색이면 지금)."""
+        served = dict(self.last_served)
         if not ts.is_yellow:
             for name, idx in self.serving.items():
-                if current in idx:
-                    self.last_served[name] = now
-        # SUMO-RL의 최소녹색 검사도 현재 현시의 값으로 맞춘다.
-        ts.min_green = self.phase_min[current]
-        if ts.time_since_last_phase_change < ts.yellow_time + ts.min_green:
-            return current
+                if ts.green_phase in idx:
+                    served[name] = now
+        return served
+
+    # ---------------------------------------------------------- 차량 누적 대기
+    def _phases_for(self, env, vehicle: str) -> tuple[int, ...]:
+        """차량의 이동에 녹색(G·g)을 주는 현시 번호. 경로에서 204820을 지나는 이동을 찾는다."""
+        phases = self._phases_of.get(vehicle)
+        if phases is None:
+            route = env.sumo.vehicle.getRoute(vehicle)
+            links = next((MOVEMENT_LINKS[m] for m in zip(route, route[1:]) if m in MOVEMENT_LINKS), [])
+            greens = env.traffic_signals[TARGET_TLS].green_phases
+            phases = self._phases_of[vehicle] = tuple(i for i, g in enumerate(greens)
+                                                      if any(g.state[l] in "Gg" for l in links))
+        return phases
+
+    def overdue(self, env) -> list[float]:
+        """현시별로, 지금 현시가 신호를 주지 않으면서 누적 대기가 max_wait 이상인 차량들의 누적 대기 합."""
+        ts = env.traffic_signals[TARGET_TLS]
+        now = env.sim_step
+        if self._overdue_at[0] == now:
+            return self._overdue_at[1]
+        out = [0.0] * ts.num_green_phases
+        if self.max_wait:
+            sumo = env.sumo
+            on_road = [v for e in ALL_ZONE_EDGES for v in sumo.edge.getLastStepVehicleIDs(e)]
+            for vehicle, pending in [(v, False) for v in on_road] + [(v, True) for v in sumo.simulation.getPendingVehicles()]:
+                phases = self._phases_for(env, vehicle)
+                if not phases or ts.green_phase in phases:
+                    continue   # 지금 현시가 이미 이 차량의 신호를 주고 있다(우회전은 늘 그렇다).
+                # 누적 대기는 1초에 최대 1초씩 늘어난다. 지난번 값에 그동안 흐른 시간을 더해도 기준에 못 미치면
+                # 다시 묻지 않는다(결과는 같고 SUMO에 묻는 횟수만 준다).
+                seen = self._wait_seen.get(vehicle)
+                if seen is not None and seen[1] + (now - seen[0]) < self.max_wait:
+                    continue
+                wait = sumo.vehicle.getDepartDelay(vehicle)
+                if not pending:
+                    wait += sumo.vehicle.getAccumulatedWaitingTime(vehicle)
+                self._wait_seen[vehicle] = (now, wait)
+                if wait >= self.max_wait:
+                    for i in phases:
+                        out[i] += wait
+        self._overdue_at = (now, out)
+        return out
+
+    # ---------------------------------------------------------- 판단
+    def _decide(self, env, action: int) -> tuple[int, str]:
+        """행동 하나에 규칙을 씌운 결과(실행될 현시, 바뀐 이유). 상태를 바꾸지 않는다."""
+        ts = env.traffic_signals[TARGET_TLS]
+        now = env.sim_step
+        current = ts.green_phase
+        if ts.time_since_last_phase_change < ts.yellow_time + self.phase_min[current]:
+            return current, "hold"
+        served = self._served_now(ts, now)
         phases = range(ts.num_green_phases)
         # 최대 녹색에 닿았으면 지금 현시를 유지하는 선택지는 없다(SUMO-RL 자동 전환보다 먼저 처리).
         at_max = ts.time_since_last_phase_change >= ts.max_green
         allowed = [p for p in phases if not (at_max and p == current)]
-        lateness = {p: self._outcome(ts, current, p, now) for p in allowed}
-        chosen = action
+        lateness = {p: self._outcome(ts, current, p, now, served) for p in allowed}
         if action not in lateness or lateness[action] > 0:
             feasible = [p for p in allowed if lateness[p] <= 0]
             in_order = sorted(feasible, key=lambda p: (p - current) % ts.num_green_phases or ts.num_green_phases)
             if action == current and at_max:
                 # 최대 녹색: 순서상 다음 현시로(보행 규칙을 지키는 것 중).
-                chosen = in_order[0] if in_order else min(allowed, key=lambda p: lateness[p])
-                self.max_green_switches += 1
-                return chosen
+                return (in_order[0] if in_order else min(allowed, key=lambda p: lateness[p])), "max_green"
             # 보행 시간이 임박해 DQN 선택을 따를 수 없다. 지금 현시를 몇 초 더 끌어 봐야 곧 같은
             # 상황이 되므로, 가장 급한 횡단보도를 여는 현시로 바로 넘어간다.
-            slack = sorted((CROSSWALKS[c]["max_wait"] - (now + ts.yellow_time - self.last_served[c]), c)
+            slack = sorted((CROSSWALKS[c]["max_wait"] - (now + ts.yellow_time - served[c]), c)
                            for c, idx in self.serving.items() if current not in idx)
             urgent = [p for _, c in slack for p in self.serving[c] if p in feasible]
             if urgent:
-                chosen = urgent[0]
-            elif in_order:
-                chosen = in_order[0]
-            else:
-                chosen = min(allowed, key=lambda p: lateness[p])   # 이미 늦었으면 가장 덜 늦는 쪽
-            self.ped_interventions += 1
-            return chosen
-        # 차량 최대 대기 (max_wait가 0이면 끈다). 보행자 규칙을 어기지 않는 경우에만 따른다.
-        overdue_phase = [0.0] * ts.num_green_phases
-        for lane in (ts.lanes if self.max_wait > 0 else []):
-            for vehicle in env.sumo.lane.getLastStepVehicleIDs(lane):
-                wait = env.sumo.vehicle.getWaitingTime(vehicle)
-                if wait < self.max_wait:
-                    continue
-                for tls_id, link, _, _ in env.sumo.vehicle.getNextTLS(vehicle):
-                    if tls_id != TARGET_TLS:
-                        continue
-                    serving = [i for i, p in enumerate(ts.green_phases) if p.state[link] in "Gg"]
-                    if current in serving:
-                        break  # 지금 현시가 이미 이 차량의 신호를 주고 있다.
-                    for i in serving:
-                        overdue_phase[i] += wait
-                    break
-        if max(overdue_phase) > 0:
-            target = max(phases, key=lambda i: overdue_phase[i])
+                return urgent[0], "ped"
+            if in_order:
+                return in_order[0], "ped"
+            return min(allowed, key=lambda p: lateness[p]), "ped"   # 이미 늦었으면 가장 덜 늦는 쪽
+        # 차량 최대 누적 대기. 보행자 규칙을 어기지 않는 경우에만 따른다.
+        overdue = self.overdue(env)
+        if max(overdue) > 0:
+            target = max(phases, key=lambda i: overdue[i])
             if target != action and lateness.get(target, math.inf) <= 0:
-                self.vehicle_interventions += 1
-                return target
+                return target, "vehicle"
+        return action, "policy"
+
+    def allowed(self, env) -> list[int]:
+        """다음 판단에서 바뀌지 않고 그대로 실행될 행동 목록."""
+        n = env.traffic_signals[TARGET_TLS].num_green_phases
+        return [a for a in range(n) if self._decide(env, a)[0] == a]
+
+    def __call__(self, env, action) -> int:
+        ts = env.traffic_signals[TARGET_TLS]
+        self.decisions += 1
+        self.last_served = self._served_now(ts, env.sim_step)
+        # SUMO-RL의 최소녹색 검사도 현재 현시의 값으로 맞춘다.
+        ts.min_green = self.phase_min[ts.green_phase]
+        decided = {a: self._decide(env, a) for a in range(ts.num_green_phases)}
+        options = [a for a, (c, _) in decided.items() if c == a]
+        if len(options) == 1:
+            self.rule_decided[next((why for a, (c, why) in decided.items() if c != a), "hold")] += 1
+        chosen, why = decided[int(action)]
+        if why == "ped":
+            self.ped_interventions += 1
+        elif why == "vehicle":
+            self.vehicle_interventions += 1
+        elif why == "max_green":
+            self.max_green_switches += 1
         return chosen
 
 
@@ -342,16 +422,45 @@ def hold_aware_dqn_class():
     1. 재생 버퍼에는 DQN이 고른 행동이 아니라 실제로 실행된 행동(info["executed_action"])을
        저장한다. 최소 녹색·보행 규칙이 행동을 바꿨는데 고른 행동으로 저장하면 행동과 결과가
        어긋나서, 어떤 선택이 좋은지 배울 수 없다(v3 첫 학습에서 확인: 판단의 85%가 무시됐다).
-    2. 다음 상태가 최소 녹색 진행 중이면(관측의 최소녹색 충족 값 = 0) 현재 현시 유지만
-       가능하므로, 미래 가치로 '현재 현시'의 Q값만 쓴다. 실행할 수 없는 행동의 학습되지 않은
-       Q값이 목표값에 섞이지 않게 한다.
-    관측 앞부분은 [현시 원-핫(n), 최소녹색 충족(1), ...] 순서여야 한다(ZoneObservation).
+    2. 미래 가치는 다음 상태에서 그대로 실행될 수 있는 행동(관측 끝 n칸의 표시)의 Q값 중 최댓값이다.
+       최소 녹색·최대 녹색·보행 규칙·차량 누적 대기 규칙 때문에 실행할 수 없는 행동의 학습되지 않은
+       Q값이 목표값에 섞이지 않게 한다. 표시가 모두 0인 경우(있으면 안 됨)는 지금 현시의 값을 쓴다.
+    3. 행동 선택(평가, 학습 중 Q값 선택, 탐험, 학습 전 무작위 탐색)도 같은 표시 안에서만 한다. 그래서
+       학습 목표가 가정하는 행동(표시 중 Q 최댓값)이 그대로 실행된다. 전체 4개 중에서 고르면 실행할 수
+       없는 행동을 골랐을 때 규칙이 다른 행동으로 바꾸는데, 그 행동이 표시 중 Q 최댓값이 아닐 수 있다
+       (10-06 코덱스 검토: 작동 확인용 모델 300번 판단 중 6번).
+    관측은 [현시 원-핫(n), ..., 실행 가능 표시(n)] 순서여야 한다(ZoneObservation).
     """
     import torch as th
     import torch.nn.functional as F
     from stable_baselines3 import DQN
 
     class HoldAwareDQN(DQN):
+        def _random_allowed(self, allowed_row: np.ndarray) -> int:
+            options = np.flatnonzero(allowed_row)
+            return int(self.action_space.np_random.choice(options)) if options.size else int(self.action_space.sample())
+
+        def predict(self, observation, state=None, episode_start=None, deterministic=False):
+            """그대로 실행될 행동(관측 끝 n칸 표시) 안에서 Q값이 가장 큰 행동. 탐험할 때는 그 안에서 무작위."""
+            self.policy.set_training_mode(False)
+            obs, vectorized = self.policy.obs_to_tensor(observation)
+            allowed = obs[:, -self.action_space.n:] > 0.5
+            if not deterministic and np.random.rand() < self.exploration_rate:
+                actions = np.array([self._random_allowed(row) for row in allowed.cpu().numpy()])
+            else:
+                with th.no_grad():
+                    q = self.q_net(obs)
+                q = th.where(allowed.any(dim=1, keepdim=True), q.masked_fill(~allowed, -th.inf), q)
+                actions = q.argmax(dim=1).cpu().numpy()
+            return (actions if vectorized else actions[0]), state
+
+        def _sample_action(self, learning_starts, action_noise=None, n_envs=1):
+            if self.num_timesteps < learning_starts:     # 학습 전 무작위 탐색도 그대로 실행될 행동 안에서
+                allowed = np.asarray(self._last_obs)[:, -self.action_space.n:] > 0.5
+                actions = np.array([self._random_allowed(row) for row in allowed])
+                return actions, actions
+            return super()._sample_action(learning_starts, action_noise, n_envs)
+
         def _store_transition(self, replay_buffer, buffer_action, new_obs, reward, dones, infos):
             executed = [info.get("executed_action") for info in infos]
             if all(a is not None for a in executed):
@@ -360,9 +469,10 @@ def hold_aware_dqn_class():
 
         def allowed_next_values(self, next_q: "th.Tensor", next_obs: "th.Tensor") -> "th.Tensor":
             n = self.action_space.n
-            current = next_obs[:, :n].argmax(dim=1, keepdim=True)
-            holding = next_obs[:, n] < 0.5
-            return th.where(holding, next_q.gather(1, current).squeeze(1), next_q.max(dim=1).values)
+            mask = next_obs[:, -n:] > 0.5
+            best = next_q.masked_fill(~mask, -th.inf).max(dim=1).values
+            current = next_q.gather(1, next_obs[:, :n].argmax(dim=1, keepdim=True)).squeeze(1)
+            return th.where(mask.any(dim=1), best, current)
 
         def train(self, gradient_steps: int, batch_size: int = 100) -> None:
             self.policy.set_training_mode(True)

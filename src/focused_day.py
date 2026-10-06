@@ -3,10 +3,10 @@
 15분마다 빈 도로에서 다시 시작하면 앞 시간대의 대기열·교착이 가려진다(2026-10-04 설계 재분석).
 여기서는 하루 96개 시간대를 끊지 않고 이어서 돌린다.
 
-- 차량: 평가와 같은 방식(이동별 15분 교통량을 그 15분 동안 무작위 도착, 시간대별 같은 seed)으로 만들고
-  시각만 이어 붙인다. 진입 갈래 나누기와 운전자 설정(config/driver_model.json)은 write_routes가 넣는다.
+- 차량: 하루 차량 파일(focused_scenario.day_route_file, 환경 지문별로 따로 둔다).
 - 신호: 실제 운영 신호를 하루 시간축으로 복원한 것(focused_scenario.aihub_signal_program).
 - 점검(check): DQN 없이 실제 운영 고정신호로만 돌려, 관측 교통량을 실제 신호가 처리하는지 본다.
+  교차로 안 충돌까지 검사하고, 평가와 같은 규칙으로 판정한다(focused_eval.judge_collisions).
 
 사용:
   .venv/bin/python src/focused_day.py check --dates 20220811 20220928 --workers 2
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import json
 import re
 import subprocess
@@ -24,69 +25,35 @@ from collections import Counter, defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from focused_data import COUNTS, PROJECT, find_network, load_counts
-from focused_scenario import (FocusedNetwork, aihub_signal_program, aihub_unreliable_periods, driver_model_version,
-                              driver_vtype_attributes, write_routes, write_tls_additional)
+from focused_data import COUNTS, PROJECT, environment_fingerprint, find_network
+from focused_scenario import (FocusedNetwork, aihub_signal_program, aihub_unreliable_periods, day_route_file,
+                              driver_model_version, driver_vtype_attributes, period_of_time, write_tls_additional)
 
 PERIOD_S = 900
 DAY_S = 96 * PERIOD_S
 TAIL_S = 1800            # 하루가 끝난 뒤 남은 차량이 빠져나갈 시간
 OUT = PROJECT / "results/focused_204820/day"
+LONG_WAIT_S = 300        # '오래 기다린 차' 기준: 진입 전 대기 + 도로에서 멈춰 있던 시간 합이 300초 초과
 # 환경 점검 통과 기준(실제 운영 고정신호, 순간이동 끔).
 # - 실제로는 관측량이 그 15분 안에 교차로를 지나갔으므로, 시뮬레이션이 같은 신호로 따라가지 못해
 #   밀린 대수(이동별 관측 누적 - 시뮬레이션 누적)가 계속 쌓이면 처리 능력이 모자란 것이다.
 #   허용 폭 150대 = 가장 붐비는 이동(길주로 직진, 15분 최대 약 740대)의 한 주기(약 200초) 도착량.
-# - GEH<5 비율: 교통 모형 보정에서 흔히 쓰는 기준은 85%다. 여기서는 15분·이동별로 더 엄격하게 95%를 쓴다.
+# - GEH는 시간당 교통량으로 계산하는 지표다(15분 대수 × 4). 교통 모형 보정에서 흔히 쓰는 기준은
+#   'GEH<5가 85% 이상'이고, 여기서는 15분·이동별로 더 엄격하게 95%를 쓴다.
+# - 충돌: 어디서 나든(석천사거리 안·밖) 모두 센다. 원인을 확인해 등록한 지도 오류와 모양이 같은 겹침만 따로 세고
+#   (config/collision_exceptions.json: 서쪽 접근로 정지선 약 69m 상류 분기점), 나머지 '확인 안 된 충돌'은 0이어야 한다.
 ACCEPTANCE = {
     "never_inserted": 0,                 # 끝까지 도로에 못 들어온 차량(교착이면 생긴다)
-    "collisions": 0,
+    "collisions_unexplained": 0,
     "max_backlog_vehicles": 150,
     "movement_15min_GEH_lt5_share": 0.95,
 }
 
 
-def route_seed(date: str, period: str) -> int:
-    return int(date) * 10_000 + int(period)
-
-
-def day_route_file(date: str, out_dir: Path) -> tuple[Path, dict[str, str]]:
-    """하루 차량 파일과 {차량 ID: 시간대}. 이미 있으면 다시 만들지 않는다(운전자 설정 버전별로 따로 둔다)."""
-    path = out_dir / f"day_{date}_{driver_model_version()}.rou.xml"
-    periods_json = path.with_suffix(".periods.json")
-    if path.exists() and periods_json.exists():
-        return path, json.loads(periods_json.read_text())
-    out_dir.mkdir(parents=True, exist_ok=True)
-    fn = FocusedNetwork()
-    counts = load_counts(COUNTS)
-    root = ET.Element("routes")
-    routes, vehicles, period_of = {}, [], {}
-    tmp = out_dir / f"tmp_{date}.rou.xml"
-    for period in sorted(p for d, p in counts if d == date):
-        offset = int(period[:2]) * 3600 + int(period[2:]) * 60
-        write_routes(fn, counts[(date, period)], tmp, seed=route_seed(date, period), time_offset=offset)
-        part = ET.parse(tmp).getroot()
-        if not root.findall("vType"):
-            root.extend(part.findall("vType"))
-        local = {r.get("id"): r.get("edges") for r in part.findall("route")}
-        for edges in local.values():
-            routes.setdefault(edges, f"r{len(routes)}")
-        for v in part.findall("vehicle"):
-            vid = f"{period}_{v.get('id')}"
-            period_of[vid] = period
-            vehicles.append((float(v.get("depart")), vid, v.get("type"), routes[local[v.get("route")]]))
-    tmp.unlink(missing_ok=True)
-    for edges, rid in routes.items():
-        ET.SubElement(root, "route", id=rid, edges=edges)
-    for depart, vid, vtype, rid in sorted(vehicles):
-        ET.SubElement(root, "vehicle", id=vid, type=vtype, route=rid, depart=f"{depart:.2f}",
-                      departLane="best", departSpeed="max")
-    ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
-    periods_json.write_text(json.dumps(period_of))
-    return path, period_of
-
-
-def _period_of_time(t: float) -> str:
-    return f"{int(t // 3600):02d}{int(t % 3600 // 900) * 15:02d}"
+def geh_hourly(simulated: int, observed: int) -> float:
+    """15분 대수를 시간당으로 바꿔 계산한 GEH."""
+    s, o = 4 * simulated, 4 * observed
+    return (2 * (s - o) ** 2 / (s + o)) ** 0.5 if s + o else 0.0
 
 
 def analyse(run: Path, date: str, route_file: Path, period_of: dict, phases: list[tuple[int, str]]) -> dict:
@@ -102,28 +69,37 @@ def analyse(run: Path, date: str, route_file: Path, period_of: dict, phases: lis
         mv = next(((a, b) for a, b in zip(e, e[1:]) if (a, b) in fn.movements), None)
         movement_of[v.get("id")] = f"{mv[0]}->{mv[1]} ({fn.movements[mv]})" if mv else "?"
     by_movement = defaultdict(lambda: {"vehicles": 0, "delay_s": 0.0, "waiting_over_300s": 0})
-    seen, wait300 = set(), 0
+    seen, long_wait, rows = set(), 0, []
     for t in ET.parse(run / "tripinfo.xml").getroot().iter("tripinfo"):
         vid = t.get("id")
         seen.add(vid)
-        delay = float(t.get("timeLoss", 0)) + float(t.get("departDelay", 0))
+        depart_delay, waiting = float(t.get("departDelay", 0)), float(t.get("waitingTime", 0))
+        delay = float(t.get("timeLoss", 0)) + depart_delay
         loss[period_of[vid]] += delay
-        over = float(t.get("waitingTime", 0)) > 300
-        wait300 += over
+        over = waiting + depart_delay > LONG_WAIT_S        # 진입 전 대기까지 넣은 누적 대기
+        long_wait += over
         m = by_movement[movement_of[vid]]
         m["vehicles"] += 1
         m["delay_s"] += delay
         m["waiting_over_300s"] += over
+        rows.append((vid, period_of[vid], movement_of[vid], t.get("depart"), t.get("departDelay"),
+                     t.get("waitingTime"), t.get("timeLoss"), t.get("arrival")))
     never = 0
     for v in routes_root.iter("vehicle"):
         if v.get("id") not in seen:
             never += 1
             lower = max(0.0, end - float(v.get("depart")))
             loss[period_of[v.get("id")]] += lower
+            long_wait += lower > LONG_WAIT_S
             m = by_movement[movement_of[v.get("id")]]
             m["vehicles"] += 1
             m["delay_s"] += lower
-            m["waiting_over_300s"] += lower > 300
+            m["waiting_over_300s"] += lower > LONG_WAIT_S
+    # 차량별 기록(차량 ID, 시간대, 이동, 출발, 진입 지연, 멈춘 시간 합, 지연, 도착)을 작게 남긴다.
+    with gzip.open(run / "vehicles.csv.gz", "wt", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["vehicle", "period", "movement", "depart", "depart_delay", "waiting_time", "time_loss", "arrival"])
+        w.writerows(rows)
     cross, cross_minute = defaultdict(Counter), defaultdict(Counter)
     for v in ET.parse(run / "vehroute.xml").getroot().iter("vehicle"):
         r = v.find("route")
@@ -132,7 +108,7 @@ def analyse(run: Path, date: str, route_file: Path, period_of: dict, phases: lis
         edges, exits = r.get("edges").split(), r.get("exitTimes").split()
         for i, (a, b) in enumerate(zip(edges, edges[1:])):
             if (a, b) in fn.movements and i < len(exits) and 0 <= float(exits[i]) < DAY_S:
-                cross[_period_of_time(float(exits[i]))][(a, b)] += 1
+                cross[period_of_time(float(exits[i]))][(a, b)] += 1
                 cross_minute[int(float(exits[i]) // 60)][(a, b)] += 1
     observed, obs_minute = defaultdict(Counter), defaultdict(Counter)
     with COUNTS.open() as handle:
@@ -141,19 +117,19 @@ def analyse(run: Path, date: str, route_file: Path, period_of: dict, phases: lis
                 observed[r["period"]][(r["from_edge"], r["to_edge"])] += int(r["count"])
                 obs_minute[(int(r["begin_unix"]) - 1660057200) % 86400 // 60][(r["from_edge"], r["to_edge"])] += int(r["count"])
     periods = sorted(planned)
-    rows, cum, max_gap = [], Counter(), Counter()
+    flows, cum, max_gap = [], Counter(), Counter()
     for p in periods:
         for mv in fn.movements:
             o, s = observed[p][mv], cross[p][mv]
             cum[mv] += o - s
             max_gap[mv] = max(max_gap[mv], cum[mv])
             if o or s:
-                rows.append({"period": p, "from": mv[0], "to": mv[1], "dir": fn.movements[mv], "observed": o, "simulated": s})
+                flows.append({"period": p, "from": mv[0], "to": mv[1], "dir": fn.movements[mv], "observed": o, "simulated": s})
     with (run / "movement_15min.csv").open("w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w = csv.DictWriter(f, fieldnames=list(flows[0]))
         w.writeheader()
-        w.writerows(rows)
-    geh = [(2 * (r["simulated"] - r["observed"]) ** 2 / (r["simulated"] + r["observed"])) ** 0.5 for r in rows]
+        w.writerows(flows)
+    geh = [geh_hourly(r["simulated"], r["observed"]) for r in flows]
     per_period = [{"period": p, "vehicles": planned[p], "delay_per_vehicle_s": round(loss[p] / planned[p], 2)} for p in periods]
     with (run / "per_period.csv").open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(per_period[0]))
@@ -194,6 +170,8 @@ def analyse(run: Path, date: str, route_file: Path, period_of: dict, phases: lis
             warn[f"teleport_{m.group(1) if m else 'collision'}"] += 1
         elif "emergency braking" in line:
             warn["emergency_braking"] += 1
+        elif "collision" in line.lower():
+            warn["collision"] += 1
     unreliable = set(aihub_unreliable_periods(date))
     reliable = [r for r in per_period if r["period"] not in unreliable]
     return {
@@ -204,7 +182,7 @@ def analyse(run: Path, date: str, route_file: Path, period_of: dict, phases: lis
         "unreliable_signal_periods": sorted(unreliable),
         "worst_period": max(per_period, key=lambda r: r["delay_per_vehicle_s"]),
         "never_inserted": never,
-        "vehicles_waiting_over_300s": wait300,
+        "vehicles_waiting_over_300s": long_wait,
         "teleports": int(stats.find("teleports").get("total")),
         "collisions": int(stats.find("safety").get("collisions")),
         "emergency_braking": int(stats.find("safety").get("emergencyBraking")),
@@ -231,11 +209,12 @@ def check_day(date: str, out: Path = OUT, seed: int = 42) -> dict:
         last, first = phases[-1][1], phases[0][1]
         phases.append((4, "".join("y" if a in "Gg" and b == "r" else a for a, b in zip(last, first))))
     add = write_tls_additional(phases, run / "tls.add.xml", "aihub_rebuilt")
-    from focused_sumo import configure_sumo
+    from focused_sumo import COLLISION_OPTIONS, configure_sumo
     configure_sumo()
     import sumolib
     cmd = [sumolib.checkBinary("sumo"), "-n", str(find_network()), "-r", str(route_file), "-a", str(add),
            "--seed", str(seed), "--end", str(DAY_S + TAIL_S), "--no-step-log", "--time-to-teleport", "-1",
+           *COLLISION_OPTIONS.split(), "--collision-output", str(run / "collisions.xml"),
            "--tripinfo-output", str(run / "tripinfo.xml"), "--tripinfo-output.write-unfinished", "true",
            "--vehroute-output", str(run / "vehroute.xml"), "--vehroute-output.exit-times", "true",
            "--vehroute-output.write-unfinished", "true", "--statistic-output", str(run / "stats.xml"),
@@ -243,11 +222,15 @@ def check_day(date: str, out: Path = OUT, seed: int = 42) -> dict:
     with (run / "sumo.log").open("w") as log:
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=log)
     result = analyse(run, date, route_file, period_of, phases)
+    from focused_eval import evaluation_fingerprint, judge_collisions
+    result.update(judge_collisions(run / "collisions.xml"))
+    result["environment_fingerprint"] = environment_fingerprint()
+    result["evaluation_fingerprint"] = evaluation_fingerprint()     # 충돌 판정 규칙이 들어 있는 지문
     result["driver_model"] = {"version": driver_model_version(), "vtype_attributes": driver_vtype_attributes()}
     backlog = max(result["max_backlog_by_movement"].values())
     result["acceptance"] = {
         "never_inserted": result["never_inserted"] <= ACCEPTANCE["never_inserted"],
-        "collisions": result["collisions"] <= ACCEPTANCE["collisions"],
+        "collisions_unexplained": len(result["collisions_unexplained"]) <= ACCEPTANCE["collisions_unexplained"],
         "max_backlog_vehicles": backlog <= ACCEPTANCE["max_backlog_vehicles"],
         "movement_15min_GEH_lt5_share": result["movement_15min_GEH_lt5_share"] >= ACCEPTANCE["movement_15min_GEH_lt5_share"],
     }
@@ -275,8 +258,9 @@ def main() -> None:
         backlog = max(r["max_backlog_by_movement"].values())
         print(f"{r['date']} {'통과' if r['passed'] else '불통과'}  하루 차량당 지연 {r['day_delay_per_vehicle_s']}초 "
               f"(최악 {r['worst_period']['period']} {r['worst_period']['delay_per_vehicle_s']}초)  "
-              f"미진입 {r['never_inserted']}  충돌 {r['collisions']}  최대 밀림 {backlog}대  "
-              f"GEH<5 {r['movement_15min_GEH_lt5_share']}")
+              f"미진입 {r['never_inserted']}  확인 안 된 충돌 {len(r['collisions_unexplained'])}(지도 오류 겹침 "
+              f"{sum(r['collisions_known_map_defect'].values())})  최대 밀림 {backlog}대  "
+              f"GEH<5 {r['movement_15min_GEH_lt5_share']}  300초 초과 {r['vehicles_waiting_over_300s']}대")
 
 
 if __name__ == "__main__":

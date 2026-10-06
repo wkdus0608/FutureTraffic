@@ -18,9 +18,9 @@ import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from focused_data import COUNTS, PROJECT, TARGET_TLS, find_network, load_counts
-from focused_scenario import (AIHUB_YELLOW_S, FocusedNetwork, aihub_signal_program, write_actuated_additional,
-                              write_routes, write_tls_additional)
+from focused_data import PROJECT, TARGET_TLS, find_network
+from focused_scenario import (AIHUB_YELLOW_S, aihub_signal_program, window_route_file, write_actuated_additional,
+                              write_tls_additional)
 
 OUT = PROJECT / "results/focused_204820/view"
 LEAD_S = 60   # 차량은 정지선 도착보다 최대 약 50초 먼저 출발하므로 화면 시작을 1분 당긴다
@@ -32,33 +32,6 @@ def seconds(hhmm: str) -> int:
 
 def clock(s: int) -> str:
     return f"{s // 3600:02d}:{s % 3600 // 60:02d}"
-
-
-def write_window_routes(date: str, first: int, last: int, output: Path) -> int:
-    """[first, last) 사이 15분 시간대들의 차량 파일을 실제 시각 기준으로 하나로 합친다(하루 점검과 같은 방식)."""
-    from focused_experiment import route_seed
-    fn, counts = FocusedNetwork(), load_counts(COUNTS)
-    root = ET.Element("routes")
-    routes, vehicles = {}, []
-    tmp = output.with_suffix(".tmp.xml")
-    for period in sorted(p for d, p in counts if d == date and first <= seconds(p) < last):
-        write_routes(fn, counts[(date, period)], tmp, seed=route_seed(date, period), time_offset=seconds(period))
-        part = ET.parse(tmp).getroot()
-        if not root.findall("vType"):
-            root.extend(part.findall("vType"))
-        local = {r.get("id"): r.get("edges") for r in part.findall("route")}
-        for edges in local.values():
-            routes.setdefault(edges, f"r{len(routes)}")
-        for v in part.findall("vehicle"):
-            vehicles.append((float(v.get("depart")), f"{period}_{v.get('id')}", v.get("type"), routes[local[v.get("route")]]))
-    tmp.unlink(missing_ok=True)
-    for edges, rid in routes.items():
-        ET.SubElement(root, "route", id=rid, edges=edges)
-    for depart, vid, vtype, rid in sorted(vehicles):
-        ET.SubElement(root, "vehicle", id=vid, type=vtype, route=rid, depart=f"{depart:.2f}",
-                      departLane="best", departSpeed="max")
-    ET.ElementTree(root).write(output, encoding="utf-8", xml_declaration=True)
-    return len(vehicles)
 
 
 def write_view_settings(output: Path) -> Path:
@@ -79,7 +52,7 @@ def prepare(date: str, start: str, minutes: int, warmup: int, policy: str) -> tu
     begin = max(0, first - LEAD_S)
     run = OUT / f"{date}_{start}_{policy}"
     run.mkdir(parents=True, exist_ok=True)
-    vehicles = write_window_routes(date, first, last, run / "routes.rou.xml")
+    vehicles = len(window_route_file(date, first, last, run / "routes.rou.xml", origin_s=0))   # 실제 시각 그대로
     if policy == "fixed":
         phases = aihub_signal_program(date, 0, end + 600)       # 자정부터의 실제 신호. SUMO가 시작 시각에 맞춰 이어 간다
         if "y" not in phases[-1][1]:                              # 프로그램 끝→처음 되돌이의 황색(경고 방지, 실행 중에는 안 일어남)
@@ -87,8 +60,8 @@ def prepare(date: str, start: str, minutes: int, warmup: int, policy: str) -> tu
             phases.append((AIHUB_YELLOW_S, "".join("y" if x in "Gg" and y == "r" else x for x, y in zip(a, b))))
         tls = write_tls_additional(phases, run / "tls.add.xml", "aihub_corrected")
     else:
-        from focused_experiment import actuated_plan
-        greens, mins, maxes = actuated_plan(start, date)
+        from focused_eval import actuated_day_plan    # 평가와 같은 감응식 하루 계획
+        greens, mins, maxes = actuated_day_plan(date)
         tls = write_actuated_additional(greens, run / "tls.add.xml", "actuated", mins, maxes, AIHUB_YELLOW_S)
     view = write_view_settings(run / "view.xml")
     from focused_sumo import configure_sumo

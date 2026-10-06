@@ -1,4 +1,5 @@
 """석천사거리 중심 실험의 기본 정합성 검사."""
+import json
 import sys
 import tempfile
 import unittest
@@ -86,12 +87,142 @@ class FocusedScenarioChecks(unittest.TestCase):
         greens = [p.get("state") for p in b.find("tlLogic[@id='204820']").findall("phase") if "y" not in p.get("state")]
         self.assertEqual(len(greens), 4)
 
+    def test_window_routes_keep_each_period_and_mark_its_vehicles(self):
+        """여러 15분 시간대를 합친 차량 파일은 시간대별 기록 대수를 그대로 담고, 차량 ID에 시간대를 붙인다."""
+        from collections import Counter
+        from focused_scenario import period_start_s, window_route_file
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "w.rou.xml"
+            period_of = window_route_file("20220811", 8 * 3600, 8 * 3600 + 1800, path, counts=self.counts)
+            root = ET.parse(path).getroot()
+        self.assertEqual(Counter(period_of.values()),
+                         {p: sum(r["count"] for r in self.counts[("20220811", p)]) for p in ("0800", "0815")})
+        self.assertTrue(all(v.split("_")[0] == p for v, p in period_of.items()))
+        departs = [float(v.get("depart")) for v in root.findall("vehicle")]
+        self.assertGreaterEqual(min(departs), 0)
+        self.assertLess(max(departs), 1800)
+        self.assertEqual(period_start_s("0815"), 8 * 3600 + 900)
+
+    def test_day_route_cache_is_keyed_by_environment_fingerprint(self):
+        """조건(코드·설정·자료)이 바뀌면 지문이 바뀌어, 예전 차량 파일을 다시 쓰지 않는다."""
+        from focused_data import ENV_FILES, environment_fingerprint, fingerprint
+        from focused_scenario import day_route_file
+        fp = environment_fingerprint()
+        self.assertEqual(fp, fingerprint(ENV_FILES))
+        self.assertNotEqual(fp, fingerprint(ENV_FILES[:-1]))
+        with tempfile.TemporaryDirectory() as tmp:
+            path, period_of = day_route_file("20220811", Path(tmp))
+            self.assertIn(fp, path.name)
+            self.assertEqual(len(period_of), sum(r["count"] for (d, _), rows in self.counts.items()
+                                                 if d == "20220811" for r in rows))
+
     def test_corrected_replay_uses_same_green_states(self):
         info = aihub_states()
         phases = replay_phases("0800")
         states = {s for _, s in phases if "y" not in s}
         self.assertTrue(states <= set(info["greens"]))
         self.assertGreaterEqual(sum(d for d, _ in phases), 1800)
+
+
+class CollisionJudgeChecks(unittest.TestCase):
+    """충돌은 모두 세고, 원인을 확인한 지도 오류와 모양이 같은 것만 예외로 둔다."""
+    # 2022-08-19 점검에서 실제로 기록된 충돌(등록된 예외의 근거)
+    SEEN = {"time": "72372.00", "type": "junction", "lane": ":SN20220622173835A_5_6", "pos": "12.00",
+            "collider": "2000_b450", "victim": "2000_p449", "colliderType": "bus", "victimType": "passenger",
+            "colliderSpeed": "13.89", "victimSpeed": "0.00", "colliderFront": "1957.16,5126.87",
+            "colliderBack": "1944.93,5125.72", "victimFront": "1956.63,5123.71", "victimBack": "1951.72,5124.55"}
+
+    def judge(self, events):
+        from focused_eval import judge_collisions
+        with tempfile.TemporaryDirectory() as tmp:
+            root = ET.Element("collisions")
+            for e in events:
+                ET.SubElement(root, "collision", e)
+            ET.ElementTree(root).write(Path(tmp) / "collisions.xml")
+            return judge_collisions(Path(tmp) / "collisions.xml")
+
+    def test_only_the_confirmed_split_overlap_is_excepted(self):
+        (ax, ay), (bx, by) = (1944.93, 5125.72), (1952.94, 5124.34)     # 5번 갈래 중심선
+        n = ((bx - ax) ** 2 + (by - ay) ** 2) ** 0.5
+        deep = f"{bx - 4 * (bx - ax) / n:.2f},{by - 4 * (by - ay) / n:.2f}"   # 분기점 끝에서 4m 안쪽
+        variants = {
+            "seen": {},
+            "victim_moving": {"victimSpeed": "1.20"},
+            "inside_204820": {"lane": ":204820_12_0"},
+            "rear_end_on_lane": {"type": "collision", "lane": "477715088_0101_02_5"},
+            "mirror_branch": {"lane": ":SN20220622173835A_5_5"},
+            "tail_deep_in_split": {"victimBack": deep},
+            "victim_on_other_lane": {"victimBack": "1951.18,5121.40"},
+        }
+        events = [{**self.SEEN, **change, "collider": name} for name, change in variants.items()]
+        result = self.judge(events)
+        self.assertEqual(result["collisions_total"], 7)
+        self.assertEqual(result["collisions_known_map_defect"], {"west_split_SN20220622173835A": 1})
+        self.assertEqual([e["collider"] for e in result["collisions_unexplained"]], list(variants)[1:])
+        self.assertEqual(result["collisions_at_204820"], 1)
+
+    def test_exception_still_matches_the_map(self):
+        """예외의 근거인 지도 모양(막힌 6번 차로, 5번 차로가 두 갈래로 나뉨, 양보 관계 없음)이 그대로인지."""
+        rule = json.loads((ROOT / "config/collision_exceptions.json").read_text())["exceptions"][0]["match"]
+        net = ET.parse(find_network()).getroot()
+        shapes = {l.get("id"): [tuple(map(float, p.split(","))) for p in l.get("shape").split()] for l in net.iter("lane")}
+        self.assertIn(rule["collider_lane"], shapes)
+        back = shapes[rule["victim_back_lane"]]
+        self.assertEqual([back[0], back[-1]], [tuple(p) for p in rule["victim_back_lane_shape"]])
+        junction = next(j for j in net.iter("junction") if j.get("id") == "SN20220622173835A")
+        self.assertTrue(all(set(r.get("foes")) == {"0"} for r in junction.iter("request")))
+        to_lane6 = [c for c in net.iter("connection") if c.get("from") == "477715088_0102_02" and c.get("toLane") == "6"]
+        self.assertEqual([(c.get("fromLane"), c.get("via")) for c in to_lane6], [("5", rule["collider_lane"])])
+        lane6 = [c for c in net.iter("connection")
+                 if (c.get("from"), c.get("fromLane")) == ("477715088_0102_02", "6") or
+                 (c.get("to"), c.get("toLane")) == ("477715088_0102_02", "6")]
+        self.assertEqual(lane6, [])
+
+    def test_missing_collision_record_is_not_counted_as_zero(self):
+        from focused_eval import judge_collisions
+        with self.assertRaises(FileNotFoundError):
+            judge_collisions(Path(tempfile.gettempdir()) / "no_such_run" / "collisions.xml")
+
+
+class EvalBookkeepingChecks(unittest.TestCase):
+    """DQN 결과는 모델 파일 지문으로 구분하고, 빠진 평가가 있으면 비교표를 만들지 않는다."""
+
+    @staticmethod
+    def model(root: Path, seed: int, content: bytes) -> str:
+        root.mkdir(parents=True)
+        (root / "training_config.json").write_text(json.dumps({"seed": seed, "timesteps": 1000}))
+        (root / "dqn_204820.zip").write_bytes(content)
+        return str(root)
+
+    def test_changed_model_gets_its_own_result_folder(self):
+        from focused_eval import planned_runs
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            a = self.model(root / "v1/seed_42", 42, b"weights after 100k")
+            b = self.model(root / "v2/seed_42", 42, b"weights after 200k")     # 폴더 이름은 같고 모델은 다름
+            folder = lambda m: planned_runs(root / "eval", ["20220928"], ["dqn"], [m], 42)[0]["run_dir"]
+            self.assertNotEqual(folder(a), folder(b))
+            self.assertEqual(folder(a), folder(a))
+            Path(a, "dqn_204820.zip").write_bytes(b"trained further")             # 같은 폴더의 모델을 바꾸면 새 결과 폴더
+            self.assertNotEqual(folder(a), planned_runs(root / "eval", ["20220928"], ["dqn"], [b], 42)[0]["run_dir"])
+            with self.assertRaises(SystemExit):                                   # 한 비교에 같은 seed 모델 둘
+                planned_runs(root / "eval", ["20220928"], ["dqn"], [a, b], 42)
+
+    def test_report_refuses_when_a_run_is_missing(self):
+        import argparse
+        from focused_eval import planned_runs, report
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            m = self.model(root / "seed_42", 42, b"weights")
+            dates = ["20220928", "20220813"]
+            for r in planned_runs(root / "eval/fp", dates, ["fixed", "actuated", "dqn"], [m], 42):
+                if not (r["policy"] == "dqn" and r["date"] == "20220813"):          # DQN의 하루치가 빠짐
+                    Path(r["run_dir"]).mkdir(parents=True)
+                    (Path(r["run_dir"]) / "metrics.json").write_text("{}")
+            args = argparse.Namespace(dates=dates, models=[m], eval_seed=42, fingerprint="fp", out=str(root / "eval"))
+            with self.assertRaises(SystemExit) as caught:
+                report(args)
+            self.assertIn("빠진 평가가 1개", str(caught.exception))
 
 
 if __name__ == "__main__":
