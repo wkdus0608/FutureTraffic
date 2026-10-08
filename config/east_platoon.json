@@ -1,0 +1,75 @@
+{
+ "description": "동쪽 이웃 신호 204822에서 석천사거리 쪽 도로(477706439_01)로 나가는 이동별로, 차가 실제로 지나가는 녹색 상태(원본 이름). 1분 통과량과 1분 안의 녹색 초의 상관이 가장 큰 상태이며, 상관이 0.5보다 작으면 null(무작위 그대로).",
+ "dates_used": [
+  "20220811",
+  "20220812",
+  "20220813",
+  "20220814",
+  "20220819",
+  "20220820",
+  "20220822",
+  "20220823",
+  "20220906",
+  "20220907",
+  "20220909",
+  "20220911",
+  "20220926",
+  "20220928",
+  "20221030"
+ ],
+ "minutes_used": 21600,
+ "candidate_states": [
+  "grrrgrrrrrrGggrrrrgrrrrrGg",
+  "grrGgrrrrrrrrgrrGGgrrrrrrr",
+  "gGGrgrrrrrrrrgGGrrgrrrrrrr",
+  "grrrgGGGGGGrrgrrrrgGGGGGrr"
+ ],
+ "green_seconds_total": {
+  "grrrgrrrrrrGggrrrrgrrrrrGg": 501778,
+  "grrGgrrrrrrrrgrrGGgrrrrrrr": 336196,
+  "gGGrgrrrrrrrrgGGrrgrrrrrrr": 183490,
+  "grrrgGGGGGGrrgrrrrgGGGGGrr": 158366
+ },
+ "movements": {
+  "477704547_02": {
+   "vehicles": 85982,
+   "correlation": {
+    "grrrgrrrrrrGggrrrrgrrrrrGg": 0.074,
+    "grrGgrrrrrrrrgrrGGgrrrrrrr": -0.248,
+    "gGGrgrrrrrrrrgGGrrgrrrrrrr": -0.533,
+    "grrrgGGGGGGrrgrrrrgGGGGGrr": 0.807
+   },
+   "release_state": "grrrgGGGGGGrrgrrrrgGGGGGrr"
+  },
+  "477706439_02": {
+   "vehicles": 2053,
+   "correlation": {
+    "grrrgrrrrrrGggrrrrgrrrrrGg": -0.026,
+    "grrGgrrrrrrrrgrrGGgrrrrrrr": 0.003,
+    "gGGrgrrrrrrrrgGGrrgrrrrrrr": 0.259,
+    "grrrgGGGGGGrrgrrrrgGGGGGrr": -0.196
+   },
+   "release_state": null
+  },
+  "477707011_01": {
+   "vehicles": 29002,
+   "correlation": {
+    "grrrgrrrrrrGggrrrrgrrrrrGg": 0.09,
+    "grrGgrrrrrrrrgrrGGgrrrrrrr": -0.167,
+    "gGGrgrrrrrrrrgGGrrgrrrrrrr": -0.234,
+    "grrrgGGGGGGrrgrrrrgGGGGGrr": 0.353
+   },
+   "release_state": null
+  },
+  "477714888_02": {
+   "vehicles": 482223,
+   "correlation": {
+    "grrrgrrrrrrGggrrrrgrrrrrGg": 0.744,
+    "grrGgrrrrrrrrgrrGGgrrrrrrr": -0.675,
+    "gGGrgrrrrrrrrgGGrrgrrrrrrr": -0.195,
+    "grrrgGGGGGGrrgrrrrgGGGGGrr": 0.074
+   },
+   "release_state": "grrrgrrrrrrGggrrrrgrrrrrGg"
+  }
+ }
+}

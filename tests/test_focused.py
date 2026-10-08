@@ -215,14 +215,83 @@ class EvalBookkeepingChecks(unittest.TestCase):
             root = Path(tmp)
             m = self.model(root / "seed_42", 42, b"weights")
             dates = ["20220928", "20220813"]
-            for r in planned_runs(root / "eval/fp", dates, ["fixed", "actuated", "dqn"], [m], 42):
+            for r in planned_runs(root / "eval/fp", dates, ["fixed", "actuated", "greedy", "dqn"], [m], 42):
                 if not (r["policy"] == "dqn" and r["date"] == "20220813"):          # DQN의 하루치가 빠짐
                     Path(r["run_dir"]).mkdir(parents=True)
                     (Path(r["run_dir"]) / "metrics.json").write_text("{}")
-            args = argparse.Namespace(dates=dates, models=[m], eval_seed=42, fingerprint="fp", out=str(root / "eval"))
+            args = argparse.Namespace(dates=dates, models=[m], eval_seed=42, arrivals="random", fingerprint="fp",
+                                      out=str(root / "eval"))
             with self.assertRaises(SystemExit) as caught:
                 report(args)
             self.assertIn("빠진 평가가 1개", str(caught.exception))
+
+
+class SimpleControlChecks(unittest.TestCase):
+    """단순 제어: 규칙상 켤 수 있는 녹색 가운데 기다리는 차가 가장 많은 것. 같으면 지금 녹색 유지."""
+
+    def test_picks_the_allowed_green_with_most_waiting(self):
+        from types import SimpleNamespace
+        from focused_eval import QueueFirst
+        from focused_rl import MOVEMENT_LINKS
+        from focused_scenario import signal_greens
+        greens = signal_greens()
+        served = [{m for m, links in MOVEMENT_LINKS.items() if any(g[l] == "G" for l in links)} for g in greens]
+        only = lambda i: next(m for m in served[i] if all(m not in served[j] for j in range(4) if j != i))
+        m1, m2, m3 = only(1), only(2), only(3)          # 녹색 하나에만 속한 이동
+        movement_of = {"a": m1, "b": m1, "c": m2, "d": m2, "e": m3, "f": m2}
+        pending = ["d"]
+
+        def env(current):
+            sumo = SimpleNamespace(
+                edge=SimpleNamespace(getLastStepVehicleIDs=lambda e: ["a", "b", "c", "e"] if e == "z" else []),
+                vehicle=SimpleNamespace(getSpeed=lambda v: 5.0 if v == "e" else 0.0),   # e는 달리는 중(세지 않음)
+                simulation=SimpleNamespace(getPendingVehicles=lambda: pending))
+            return SimpleNamespace(sumo=sumo, traffic_signals={"204820": SimpleNamespace(green_phase=current)})
+
+        q = QueueFirst(movement_of, greens)
+        q.edges = ["z"]
+        # 기다리는 차: 녹색 1 = 2대(a, b), 녹색 2 = 2대(c + 진입 대기 d), 녹색 3 = 0대(e는 달림)
+        self.assertEqual(q(env(0), [0, 1, 2, 3]), 1)          # 같으면 번호가 작은 녹색
+        self.assertEqual(q(env(2), [0, 1, 2, 3]), 2)          # 같으면 지금 녹색 유지
+        self.assertEqual(q(env(0), [0, 3]), 0)                # 켤 수 없는 녹색(1, 2)은 고르지 않는다
+        self.assertEqual(q(env(1), [3]), 3)                   # 규칙이 하나만 남기면 그것
+        pending.append("f")                                    # 녹색 2에 한 대 더 → 3대
+        self.assertEqual(q(env(1), [0, 1, 2, 3]), 2)          # 지금 녹색(1)보다 많으면 바꾼다
+
+
+class PlatoonVariantChecks(unittest.TestCase):
+    """동쪽 무리 도착 민감도: 동쪽 차량의 출발 시각만 이웃 신호 204822의 녹색에 맞춘다."""
+
+    def test_release_greens_are_found_from_data(self):
+        config = json.loads((ROOT / "config/east_platoon.json").read_text())
+        moves = config["movements"]
+        self.assertGreaterEqual(moves["477714888_02"]["correlation"][moves["477714888_02"]["release_state"]], 0.5)   # 직진
+        self.assertIsNone(moves["477707011_01"]["release_state"])                                                  # 우회전
+        split = json.loads((ROOT / "config/focused_split.json").read_text())
+        self.assertFalse(set(config["dates_used"]) & set(split["test"]))      # 시험 날짜는 쓰지 않았다
+
+    def test_only_east_departures_move_into_upstream_greens(self):
+        from focused_platoon import EAST_APPROACH, PLATOON_CONFIG, platoon_route_file, upstream_states
+        from focused_scenario import UPSTREAM_LIMIT_M, day_route_file
+        date = "20220811"
+        start = FocusedNetwork()._chain(EAST_APPROACH, True, UPSTREAM_LIMIT_M)[0]
+        with tempfile.TemporaryDirectory() as tmp:
+            base, _ = day_route_file(date, Path(tmp))
+            variant, _ = platoon_route_file(date, Path(tmp))
+            def load(f):
+                root = ET.parse(f).getroot()
+                routes = {r.get("id"): r.get("edges") for r in root.iter("route")}
+                return [(v.get("id"), v.get("type"), routes[v.get("route")], float(v.get("depart"))) for v in root.iter("vehicle")]
+            a, b = {x[0]: x for x in load(base)}, load(variant)
+        self.assertEqual(sorted(a), sorted(x[0] for x in b))
+        self.assertEqual([x[3] for x in b], sorted(x[3] for x in b))                      # 출발 순서 정렬
+        moved = [x for x in b if x[3] != a[x[0]][3]]
+        self.assertTrue(all(x[1:3] == a[x[0]][1:3] for x in b))                            # 차종·경로 그대로
+        self.assertTrue(moved and all(x[2].split()[0] == start for x in moved))           # 동쪽 차량만
+        through = json.loads(PLATOON_CONFIG.read_text())["movements"]["477714888_02"]["release_state"]
+        states = upstream_states(date)
+        in_green = sum(states[min(86399, int(x[3]))] == through for x in moved) / len(moved)
+        self.assertGreater(in_green, 0.6)                                                   # 대부분 직진 녹색 안에서 출발
 
 
 if __name__ == "__main__":

@@ -36,7 +36,7 @@ src/      focused_data.py      자료 읽기
           focused_package.py   Colab용 묶음(zip) 만들기
 tests/    자동 검사 28개
 notebooks/ FutureTraffic_Colab.ipynb(Colab에서 설치·검사·재현성 확인·학습·평가)
-docs/     종합 보고 · 설계 쉬운 설명 · 수정 내역(v5) · 실험 설정 한 장 · 전체 점검 · 가상 도로 정상화 · 중간보고
+docs/     코드 설명 가이드(교수님 설명용) · 종합 보고 · 설계 쉬운 설명 · 수정 내역(v5) · 실험 설정 한 장 · 전체 점검 · 가상 도로 정상화 · 중간보고
 results/  focused_204820/day(15일 환경 점검) · eval(평가, 지문별 폴더) · models(학습) · cache · claude_audit_20261005(점검 기록)
 ```
 
