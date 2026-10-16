@@ -1,0 +1,8 @@
+{
+  "version": "environment_v6_20261014",
+  "description": "v6 환경 변형을 정하는 설정. 환경 변수 FOCUSED_RULESET(none·pet1·pet1_5)와 FOCUSED_NORTH_EXT(m, 0이면 연장 안 함)로 고른다. 규칙 없음(none) + 연장 0이면 v5와 같은 환경이다.",
+  "default_rule_set": "none",
+  "north_extension_m": 240,
+  "north_extension_edge": "477706911_01_01",
+  "north_extension_note": "석천로 북쪽 진입로는 AI Hub 지도가 정지선 58m 위(477706911_01_01의 시작, 지도 끝)에서 끝난다. 그 도로(3차로) 시작점을 같은 방향으로 240m 늘려 정지선에서 약 298m까지 차가 줄을 설 수 있게 한다(감지 구간 상한 300m와 같게). 실제 도로의 그 구간 모양은 자료에 없으므로 곧은 도로로 가정한다. 차량 수·차종·정지선 도착 시각은 그대로다(출발 시각만 자유 주행 시간만큼 앞당김)."
+}

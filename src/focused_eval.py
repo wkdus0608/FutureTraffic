@@ -42,8 +42,9 @@ from collections import Counter, defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-from focused_data import ENV_FILES, PROJECT, TARGET_TLS, environment_fingerprint, find_network, fingerprint
-from focused_scenario import (AIHUB_YELLOW_S, FocusedNetwork, aihub_day_timeline, aihub_signal_program,
+from focused_data import (ENV_FILES, PROJECT, TARGET_TLS, environment_fingerprint, find_network, fingerprint,
+                          variant, variant_signature)
+from focused_scenario import (AIHUB_YELLOW_S, FocusedNetwork, apply_all_red, aihub_day_timeline, aihub_signal_program,
                               aihub_unreliable_periods, day_route_file, dqn_template_network, period_of_time,
                               signal_greens, write_actuated_additional, write_tls_additional, _corrected_state,
                               aihub_states)
@@ -52,8 +53,9 @@ CACHE = PROJECT / "results/focused_204820/cache"
 OUT = PROJECT / "results/focused_204820/eval"
 DAY_S, TAIL_S = 86400, 1800
 LONG_WAIT_S = 300
-POLICIES = ("fixed", "actuated", "greedy", "dqn")
-LABELS = {"fixed": "고정신호(실제 운영)", "actuated": "감응식(참고)", "greedy": "단순 제어(학습 없음)", "dqn": "DQN"}
+POLICIES = ("fixed", "fixedc", "actuated", "greedy", "dqn")
+LABELS = {"fixed": "고정신호(원자료 그대로)", "fixedc": "고정신호(전적색 보정)", "actuated": "감응식(참고)",
+          "greedy": "단순 제어(학습 없음)", "dqn": "DQN"}
 ARRIVALS = {"random": "무작위 도착(본 결과)", "platoon": "동쪽 무리 도착(민감도)"}
 BANDS = [("심야 00~06시", 0, 6), ("오전 첨두 07~09시", 7, 9), ("낮 10~15시", 10, 15),
          ("오후 첨두 16~19시", 16, 19), ("저녁 20~23시", 20, 23)]
@@ -107,12 +109,17 @@ def judge_collisions(path: Path) -> dict:
 
 
 # ------------------------------------------------------------------ 신호 프로그램
-def fixed_day_program(date: str) -> list[tuple[int, str]]:
-    """그날 실제 운영 신호(하루 + 배출). 끝이 녹색이면 첫 현시로 되돌아가는 황색을 붙인다(경고 방지)."""
+def fixed_day_program(date: str, corrected: bool = False) -> list[tuple[int, str]]:
+    """그날 실제 운영 신호(하루 + 배출). 끝이 녹색이면 첫 현시로 되돌아가는 황색을 붙인다(경고 방지).
+
+    corrected=True이면 전환 규칙(config/transition_rules.json)의 전적색을 황색 뒤에 넣는다(끝나는 녹색에서 뺀다).
+    """
     phases = aihub_signal_program(date, 0, DAY_S + TAIL_S)
     if "y" not in phases[-1][1]:
         last, first = phases[-1][1], phases[0][1]
         phases.append((AIHUB_YELLOW_S, "".join("y" if a in "Gg" and b == "r" else a for a, b in zip(last, first))))
+    if corrected:
+        phases, _ = apply_all_red(phases)
     return phases
 
 
@@ -244,8 +251,9 @@ def run_day(job: dict) -> dict:
     else:
         route_file, period_of = day_route_file(date, CACHE / "routes")
     command, tripinfo, stats = sumo_output_options(run_dir)
-    if policy == "fixed":
-        add = write_tls_additional(fixed_day_program(date), run_dir / "tls.add.xml", "aihub_corrected")
+    if policy in ("fixed", "fixedc"):
+        add = write_tls_additional(fixed_day_program(date, corrected=policy == "fixedc"), run_dir / "tls.add.xml",
+                                   "aihub_corrected")
         command += f" --additional-files {add}"
     elif policy == "actuated":
         greens, mins, maxes = actuated_day_plan(date)
@@ -303,6 +311,7 @@ def run_day(job: dict) -> dict:
     result = {"date": date, "policy": policy, "arrivals": arrivals, "eval_seed": eval_seed, "train_seed": job.get("train_seed"),
               "model": job.get("model"), "model_sha256": job.get("model_sha256"),
               "model_timesteps": job.get("model_timesteps"), "evaluation_fingerprint": job["fingerprint"],
+              "variant": variant_signature(),
               "environment_fingerprint": environment_fingerprint(), "seconds": round(time.time() - started, 1),
               "action_counts": dict(actions)}
     result.update(vehicle_metrics(route_file, period_of, tripinfo, date, run_dir))
@@ -388,6 +397,9 @@ def _group(rows: list[dict], key: str) -> dict:
 
 
 def run(args) -> None:
+    if "fixedc" in args.policies and not variant()["all_red"]:
+        args.policies = [p for p in args.policies if p != "fixedc"]     # 규칙이 없으면 원자료 고정신호와 같다
+        print("전환 규칙이 없어(none) 전적색 보정 고정신호는 원자료 고정신호와 같습니다. 돌리지 않습니다.", flush=True)
     fp = evaluation_fingerprint()
     out = Path(args.out) / fp
     jobs = [{**j, "fingerprint": fp}
@@ -461,7 +473,8 @@ def _summarize(rows: list[dict], part: str) -> dict:
 
 def report(args) -> None:
     out = Path(args.out) / (args.fingerprint or evaluation_fingerprint())
-    runs = planned_runs(out, args.dates, ["fixed", "actuated", "greedy"] + (["dqn"] if args.models else []), args.models,
+    base = ["fixed"] + (["fixedc"] if variant()["all_red"] else []) + ["actuated", "greedy"]
+    runs = planned_runs(out, args.dates, base + (["dqn"] if args.models else []), args.models,
                         args.eval_seed, args.arrivals)
     rows = _load(runs)
     lines = [f"# 석천사거리 평가 — 날짜 {', '.join(args.dates)} (평가 지문 {out.name}, 평가 seed {args.eval_seed})", "",

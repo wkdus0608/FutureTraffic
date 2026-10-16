@@ -530,6 +530,66 @@ def replay_phases(period: str, duration: int = 1800, date: str = "20220810") -> 
     return aihub_signal_program(date, int(period[:2]) * 3600 + int(period[2:]) * 60, duration)
 
 
+def all_red_state(yellow_state: str) -> str:
+    """황색 상태에서 황색(y)만 적색으로 바꾼 전적색 상태. 계속 양보 녹색(g)인 연결(우회전)은 그대로 둔다."""
+    return yellow_state.replace("y", "r")
+
+
+def apply_all_red(phases: list[tuple[int, str]], all_red: dict[tuple[int, int], int] | None = None
+                  ) -> tuple[list[tuple[int, str]], dict]:
+    """고정신호 프로그램의 녹색 i → 황색 → 녹색 j 전환마다 황색 뒤에 전적색 R초를 넣는다(R = all_red[(i, j)]).
+
+    하루 시간표가 실제 기록과 어긋나지 않게(고정신호 = 그 시각의 실제 신호) R초는 끝나는 녹색의 마지막 R초에서 뺀다.
+    끝나는 녹색이 R+1초보다 짧으면 1초는 남기고 가능한 만큼만 뺀다(그 횟수를 센다). 전환(i, j)이 정해지지 않는
+    구간(황색이 아니거나 앞뒤에 녹색이 없음)은 그대로 둔다. 반환: (새 프로그램, 기록).
+    """
+    from focused_data import variant
+    all_red = variant()["all_red"] if all_red is None else all_red
+    greens = signal_greens()
+    index = {g: i for i, g in enumerate(greens)}
+    out = [list(p) for p in phases]
+    log = {"transitions": 0, "with_all_red": 0, "inserted_s": 0, "shortened_below_rule": 0, "by_transition": {}}
+    insert_after: dict[int, tuple[int, str]] = {}      # 출력 위치 → (전적색 초, 상태)
+    last_green = None                                  # (위치, 녹색 번호)
+    k = 0
+    while k < len(out):
+        dur, state = out[k]
+        if state in index:
+            last_green = (k, index[state])
+            k += 1
+            continue
+        if "y" in state and last_green is not None:
+            end = k
+            while end + 1 < len(out) and "y" in out[end + 1][1]:
+                end += 1
+            nxt = out[end + 1][1] if end + 1 < len(out) else None
+            if nxt in index:
+                pair = (last_green[1], index[nxt])
+                log["transitions"] += 1
+                r = all_red.get(pair, 0)
+                if r > 0:
+                    pos = last_green[0]
+                    take = min(r, out[pos][0] - 1)
+                    if take < r:
+                        log["shortened_below_rule"] += 1
+                    if take > 0:
+                        out[pos][0] -= take
+                        insert_after[end] = (take, all_red_state(out[end][1]))
+                        log["with_all_red"] += 1
+                        log["inserted_s"] += take
+                        key = f"{pair[0]}>{pair[1]}"
+                        log["by_transition"][key] = log["by_transition"].get(key, 0) + 1
+            k = end + 1
+            continue
+        k += 1
+    result = []
+    for pos, (dur, state) in enumerate(out):
+        result.append((dur, state))
+        if pos in insert_after:
+            result.append(insert_after[pos])
+    return result, log
+
+
 def write_tls_additional(phases: list[tuple[int, str]], output: Path, program_id: str) -> Path:
     root = ET.Element("additional")
     logic = ET.SubElement(root, "tlLogic", id=TARGET_TLS, type="static", programID=program_id, offset="0")
@@ -597,6 +657,9 @@ def write_actuated_additional(greens: list[str], output: Path, program_id: str, 
         lane_links[f"{c.get('from')}_{c.get('fromLane')}"].append(int(c.get("linkIndex")))
     always_minor = sorted(lane for lane, links in lane_links.items()
                           if all(g[i] == "g" for g in greens for i in links))
+    from focused_data import variant
+    all_red = variant()["all_red"]
+    canonical = signal_greens()
     root = ET.Element("additional")
     logic = ET.SubElement(root, "tlLogic", id=TARGET_TLS, type="actuated", programID=program_id, offset="0")
     for i, g in enumerate(greens):
@@ -605,6 +668,9 @@ def write_actuated_additional(greens: list[str], output: Path, program_id: str, 
         ET.SubElement(logic, "phase", duration=str(min_durs[i]), minDur=str(min_durs[i]),
                       maxDur=str(max(min_durs[i], max_durs[i])), state=g)
         ET.SubElement(logic, "phase", duration=str(yellow), state=y)
+        r = all_red.get((canonical.index(g), canonical.index(nxt)), 0)
+        if r > 0:      # 전환 뒤 전적색(고정 길이). 녹색 시간은 줄이지 않는다
+            ET.SubElement(logic, "phase", duration=str(r), state=all_red_state(y))
     for lane in always_minor:
         ET.SubElement(logic, "param", key=lane, value="NO_DETECTOR")
     tree = ET.ElementTree(root)

@@ -16,6 +16,9 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import math
+import os
+import re
 import struct
 import xml.etree.ElementTree as ET
 import zlib
@@ -40,9 +43,74 @@ SIGNALS = RAW / "signals"
 COUNTS = DERIVED / "counts_204820.csv"
 
 
+ENV_V6 = PROJECT / "config/environment_v6.json"
+TRANSITION_RULES = PROJECT / "config/transition_rules.json"
+NETWORK_CACHE = PROJECT / "results/focused_204820/cache"
+
+
+def variant() -> dict:
+    """이 실행의 환경 변형: 전환 규칙 묶음(전적색 길이)과 북쪽 진입로 연장 길이.
+
+    환경 변수 FOCUSED_RULESET(none·pet1·pet1_5), FOCUSED_NORTH_EXT(m)로 고른다. 정하지 않으면
+    config/environment_v6.json의 기본값이다. 규칙 none + 연장 0이면 v5와 같은 환경이다.
+    """
+    cfg = json.loads(ENV_V6.read_text())
+    sets = json.loads(TRANSITION_RULES.read_text())["rule_sets"]
+    name = os.environ.get("FOCUSED_RULESET") or cfg["default_rule_set"]
+    if name not in sets:
+        raise SystemExit(f"전환 규칙 묶음 '{name}'이 없습니다({', '.join(sets)}). FOCUSED_RULESET을 확인하세요.")
+    extension = float(os.environ.get("FOCUSED_NORTH_EXT", cfg["north_extension_m"]))
+    all_red = {tuple(int(x) for x in k.split(">")): int(v) for k, v in sets[name].items()}
+    return {"rule_set": name, "all_red": all_red, "north_extension_m": extension,
+            "north_extension_edge": cfg["north_extension_edge"]}
+
+
+def variant_signature() -> str:
+    v = variant()
+    rules = ",".join(f"{i}>{j}:{r}" for (i, j), r in sorted(v["all_red"].items()))
+    return f"rule_set={v['rule_set']};all_red={rules};north_ext={v['north_extension_m']:g}"
+
+
+def _extended_network_text(text: str, edge: str, length_m: float) -> str:
+    """edge(들어오는 도로)의 시작점을 진행 반대 방향으로 length_m 늘린다. 차로 모양의 첫 점과 길이만 바꾼다."""
+    pattern = re.compile(r'(<lane id="%s_(\d+)"[^>]*?length=")([\d.]+)("[^>]*?shape=")([^"]+)(")' % re.escape(edge))
+    found = 0
+
+    def replace(m):
+        nonlocal found
+        found += 1
+        pts = [tuple(float(c) for c in p.split(",")) for p in m.group(5).split()]
+        (x0, y0), (x1, y1) = pts[0], pts[1]
+        d = math.hypot(x1 - x0, y1 - y0)
+        pts[0] = (x0 - (x1 - x0) / d * length_m, y0 - (y1 - y0) / d * length_m)
+        shape = " ".join(f"{x:.2f},{y:.2f}" for x, y in pts)
+        return f"{m.group(1)}{float(m.group(3)) + length_m:.2f}{m.group(4)}{shape}{m.group(6)}"
+
+    out = pattern.sub(replace, text)
+    if not found:
+        raise ValueError(f"연장할 도로 {edge}의 차로를 지도에서 찾지 못했습니다.")
+    return out
+
+
+def extended_network(length_m: float, edge: str) -> Path:
+    """원본 지도에 북쪽 진입로 연장을 반영한 사본(캐시). 내용으로 이름을 정해 여러 프로세스가 같이 써도 안전하다."""
+    raw = NETWORK.read_bytes()
+    key = hashlib.sha256(raw + f"|{edge}|{length_m:g}".encode()).hexdigest()[:12]
+    path = NETWORK_CACHE / f"net_north_ext_{length_m:g}m_{key}.net.xml"
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_text(_extended_network_text(raw.decode("utf-8"), edge, length_m), encoding="utf-8")
+        tmp.replace(path)
+    return path
+
+
 def find_network() -> Path:
     if not NETWORK.exists():
         raise FileNotFoundError(f"지도 파일이 없습니다: {NETWORK}")
+    v = variant()
+    if v["north_extension_m"] > 0:
+        return extended_network(v["north_extension_m"], v["north_extension_edge"])
     return NETWORK
 
 
@@ -52,6 +120,7 @@ def find_network() -> Path:
 ENV_FILES = [
     "src/focused_data.py", "src/focused_scenario.py", "src/focused_sumo.py", "src/focused_rl.py",
     "config/driver_model.json", "config/focused_split.json", "config/vehicle_wait_rule.json",
+    "config/environment_v6.json", "config/transition_rules.json",
     "data/raw/manifest.json", "data/derived/counts_204820.csv", "data/derived/branch_inflow_477748652_01.csv",
 ]
 
@@ -62,6 +131,7 @@ def fingerprint(paths: list[str]) -> str:
     for rel in paths:
         h.update(rel.encode())
         h.update(hashlib.sha256((PROJECT / rel).read_bytes()).digest())
+    h.update(variant_signature().encode())     # 같은 파일이라도 전환 규칙·북쪽 연장이 다르면 다른 환경이다
     return h.hexdigest()[:12]
 
 

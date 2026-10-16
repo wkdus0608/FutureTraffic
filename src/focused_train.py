@@ -26,7 +26,8 @@ from pathlib import Path
 
 import gymnasium as gym
 
-from focused_data import COUNTS, PROJECT, TARGET_TLS, environment_fingerprint, fingerprint, load_counts
+from focused_data import (COUNTS, PROJECT, TARGET_TLS, environment_fingerprint, fingerprint, load_counts,
+                          variant_signature)
 from focused_scenario import (AIHUB_YELLOW_S, ARRIVAL_WINDOW_S, ENTRY_BRANCHES, dqn_template_network,
                               driver_vtype_attributes, period_start_s, real_signal_states, window_route_file)
 
@@ -169,6 +170,7 @@ def train(args) -> None:
         model.load_replay_buffer(checkpoint / "replay_buffer")
         print(f"이어서 학습: {model.num_timesteps}단계부터")
     else:
+        # 64-64
         model = DQN(policy="MlpPolicy", env=monitored, seed=args.seed, verbose=0, **DQN_SETTINGS)
         (out / "run.json").write_text(json.dumps({"environment_fingerprint": env_fp, "seed": args.seed,
                                                   "started": time.strftime("%Y-%m-%d %H:%M:%S")}))
@@ -179,7 +181,7 @@ def train(args) -> None:
     model.save(out / f"dqn_{TARGET_TLS}")
     monitored.close()
     config = {
-        "environment_fingerprint": env_fp,
+        "environment_fingerprint": env_fp, "variant": variant_signature(),
         "train_code_fingerprint": fingerprint(["src/focused_train.py"]),
         "seed": args.seed, "timesteps": args.timesteps, "resumed": resume,
         "split_file": str(args.split_file), "train_dates": sorted({d for d, _ in scenarios}),

@@ -7,9 +7,14 @@
 - 시작 시각에서 한 번 멈춘다. ▶(Run)을 누르면 이어진다.
 - DQN 장면은 학습한 모델이 생기면 추가한다.
 
+- 지도와 신호는 지금 환경 변형(FOCUSED_RULESET, FOCUSED_NORTH_EXT)을 따른다. 기본은 북쪽 도로 연장(240m)이다.
+  --policy fixedc는 전환 규칙의 전적색을 넣은 고정신호다(끝나는 녹색의 마지막 몇 초를 황색 뒤 전적색으로).
+
 사용:
   .venv/bin/python src/focused_view.py --date 20220811 --start 0800
   .venv/bin/python src/focused_view.py --date 20220811 --start 1800 --policy actuated
+  FOCUSED_RULESET=pet1 .venv/bin/python src/focused_view.py --date 20220928 --start 0800 --policy fixedc
+  FOCUSED_NORTH_EXT=0 .venv/bin/python src/focused_view.py --date 20220928 --start 0800      (v5 지도, 북쪽 58m)
 """
 from __future__ import annotations
 
@@ -18,9 +23,9 @@ import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from focused_data import PROJECT, TARGET_TLS, find_network
-from focused_scenario import (AIHUB_YELLOW_S, aihub_signal_program, window_route_file, write_actuated_additional,
-                              write_tls_additional)
+from focused_data import PROJECT, TARGET_TLS, find_network, variant
+from focused_scenario import (AIHUB_YELLOW_S, aihub_signal_program, apply_all_red, window_route_file,
+                              write_actuated_additional, write_tls_additional)
 
 OUT = PROJECT / "results/focused_204820/view"
 LEAD_S = 60   # 차량은 정지선 도착보다 최대 약 50초 먼저 출발하므로 화면 시작을 1분 당긴다
@@ -50,14 +55,17 @@ def prepare(date: str, start: str, minutes: int, warmup: int, policy: str) -> tu
     end = t0 + minutes * 60
     last = (end + 899) // 900 * 900
     begin = max(0, first - LEAD_S)
-    run = OUT / f"{date}_{start}_{policy}"
+    v = variant()
+    run = OUT / f"{date}_{start}_{policy}_{v['rule_set']}_ext{v['north_extension_m']:g}"
     run.mkdir(parents=True, exist_ok=True)
     vehicles = len(window_route_file(date, first, last, run / "routes.rou.xml", origin_s=0))   # 실제 시각 그대로
-    if policy == "fixed":
+    if policy in ("fixed", "fixedc"):
         phases = aihub_signal_program(date, 0, end + 600)       # 자정부터의 실제 신호. SUMO가 시작 시각에 맞춰 이어 간다
         if "y" not in phases[-1][1]:                              # 프로그램 끝→처음 되돌이의 황색(경고 방지, 실행 중에는 안 일어남)
             a, b = phases[-1][1], phases[0][1]
             phases.append((AIHUB_YELLOW_S, "".join("y" if x in "Gg" and y == "r" else x for x, y in zip(a, b))))
+        if policy == "fixedc":
+            phases, _ = apply_all_red(phases)                   # 평가의 보정 고정신호와 같은 방법
         tls = write_tls_additional(phases, run / "tls.add.xml", "aihub_corrected")
     else:
         from focused_eval import actuated_day_plan    # 평가와 같은 감응식 하루 계획
@@ -82,8 +90,8 @@ def main() -> None:
     parser.add_argument("--start", default="0800", help="보고 싶은 시각(HHMM, 15분 단위)")
     parser.add_argument("--minutes", type=int, default=30, help="시작 시각부터 볼 길이(분)")
     parser.add_argument("--warmup", type=int, default=10, help="시작 전에 미리 돌릴 시간(분). 대기열이 쌓인 상태로 보기 위해")
-    parser.add_argument("--policy", choices=("fixed", "actuated"), default="fixed",
-                        help="fixed = 실제 운영 고정신호, actuated = 감응식")
+    parser.add_argument("--policy", choices=("fixed", "fixedc", "actuated"), default="fixed",
+                        help="fixed = 실제 운영 고정신호(원자료), fixedc = 전적색 보정 고정신호, actuated = 감응식")
     parser.add_argument("--prepare-only", action="store_true", help="파일만 만들고 화면은 열지 않는다")
     args = parser.parse_args()
     config, info = prepare(args.date, args.start, args.minutes, args.warmup, args.policy)

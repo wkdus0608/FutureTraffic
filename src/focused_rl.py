@@ -201,6 +201,8 @@ class SignalConstraints:
         self.max_wait = VEHICLE_MAX_WAIT_S if max_wait is None else max_wait
         self.phase_min: list[int] = []
         self.serving: dict[str, list[int]] = {}
+        self.base_yellow = 0                           # 황색시간(bind에서 환경 값으로)
+        self.all_red: dict[tuple[int, int], int] = {}  # 전환별 전적색(bind에서 설정으로)
         self.decisions = self.ped_interventions = self.vehicle_interventions = self.max_green_switches = 0
         self.rule_decided: Counter = Counter()
         self.last_served: dict[str, float] = {}
@@ -214,7 +216,10 @@ class SignalConstraints:
 
     def bind(self, env) -> "SignalConstraints":
         """환경의 녹색 현시 목록으로 규칙을 만들고 관측 함수가 볼 수 있게 붙인다."""
-        greens = [p.state for p in env.traffic_signals[TARGET_TLS].green_phases]
+        ts = env.traffic_signals[TARGET_TLS]
+        greens = [p.state for p in ts.green_phases]
+        self.base_yellow = getattr(ts, "base_yellow", ts.yellow_time)
+        self.all_red = dict(getattr(ts, "all_red", {}))
         self.phase_min, self.serving = phase_rules(greens)
         missing = [n for n, idx in self.serving.items() if not idx]
         if missing:
@@ -236,10 +241,14 @@ class SignalConstraints:
         return ts.env.sim_step - self.last_served[name]
 
     # ---------------------------------------------------------- 보행자 일정 계산
-    def _hold(self, ts, phase: int) -> int:
-        """phase로 바꾼 뒤 다시 바꿀 수 있는 판단 시점까지의 최소 시간(황색+최소녹색, 판단 간격 단위로 올림)."""
+    def intergreen(self, frm: int, to: int) -> int:
+        """녹색 frm에서 to로 바꿀 때 녹색이 없는 시간(황색 + 그 전환의 전적색)."""
+        return self.base_yellow + self.all_red.get((frm, to), 0)
+
+    def _hold(self, ts, frm: int, phase: int) -> int:
+        """frm에서 phase로 바꾼 뒤 다시 바꿀 수 있는 판단 시점까지의 최소 시간(전환+최소녹색, 판단 간격 단위로 올림)."""
         step = ts.env.delta_time
-        return math.ceil((ts.yellow_time + self.phase_min[phase]) / step) * step
+        return math.ceil((self.intergreen(frm, phase) + self.phase_min[phase]) / step) * step
 
     def _lateness(self, ts, phase: int, next_switch: float, ends: dict[str, float]) -> float:
         """phase를 next_switch까지 유지한 뒤 아직 안 열린 횡단보도를 가장 빠른 순서로 열 때,
@@ -249,11 +258,12 @@ class SignalConstraints:
             return -math.inf
         best = math.inf
         for order in itertools.permutations(pending):
-            t, worst = next_switch, -math.inf
+            t, worst, prev = next_switch, -math.inf, phase
             for c in order:
-                p = min(self.serving[c], key=lambda i: self._hold(ts, i))
-                worst = max(worst, t + ts.yellow_time - ends[c] - CROSSWALKS[c]["max_wait"])
-                t += self._hold(ts, p)
+                p = min(self.serving[c], key=lambda i: self._hold(ts, prev, i))
+                worst = max(worst, t + self.intergreen(prev, p) - ends[c] - CROSSWALKS[c]["max_wait"])
+                t += self._hold(ts, prev, p)
+                prev = p
             best = min(best, worst)
         return best
 
@@ -265,10 +275,10 @@ class SignalConstraints:
         for c, idx in self.serving.items():
             if current in idx:
                 ends[c] = now          # 지금 현시를 떠나는 순간부터 그 횡단보도의 대기가 시작된다.
-        late_now = max([now + ts.yellow_time - ends[c] - CROSSWALKS[c]["max_wait"]
+        late_now = max([now + self.intergreen(current, action) - ends[c] - CROSSWALKS[c]["max_wait"]
                         for c, idx in self.serving.items() if action in idx and current not in idx],
                        default=-math.inf)
-        return max(late_now, self._lateness(ts, action, now + self._hold(ts, action), ends))
+        return max(late_now, self._lateness(ts, action, now + self._hold(ts, current, action), ends))
 
     def _served_now(self, ts, now: float) -> dict[str, float]:
         """지금 시각까지 반영한 횡단보도별 마지막 보행 녹색 시각(지금 보행 녹색이면 지금)."""
@@ -342,7 +352,7 @@ class SignalConstraints:
                 return (in_order[0] if in_order else min(allowed, key=lambda p: lateness[p])), "max_green"
             # 보행 시간이 임박해 DQN 선택을 따를 수 없다. 지금 현시를 몇 초 더 끌어 봐야 곧 같은
             # 상황이 되므로, 가장 급한 횡단보도를 여는 현시로 바로 넘어간다.
-            slack = sorted((CROSSWALKS[c]["max_wait"] - (now + ts.yellow_time - served[c]), c)
+            slack = sorted((CROSSWALKS[c]["max_wait"] - (now + min(self.intergreen(current, p) for p in idx) - served[c]), c)
                            for c, idx in self.serving.items() if current not in idx)
             urgent = [p for _, c in slack for p in self.serving[c] if p in feasible]
             if urgent:

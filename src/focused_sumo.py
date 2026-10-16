@@ -35,6 +35,61 @@ def configure_sumo() -> None:
 COLLISION_OPTIONS = "--collision.check-junctions true --collision.action warn"
 
 
+_RULE_SIGNAL_CLASS = None
+
+
+def rule_signal_class():
+    """전환(i→j)마다 황색 뒤에 전적색(모든 방향 적색)을 두는 SUMO-RL 신호 객체.
+
+    전적색 길이는 focused_data.variant()["all_red"][(i, j)]다. 없으면 0초라 SUMO-RL 기본 동작(황색 뒤 바로 녹색)과
+    같다. 전환 동안 yellow_time을 '황색 + 전적색'으로 두어, 최소 녹색·관측·운영 규칙이 쓰는 값이 그대로 맞게 한다.
+    전환 중(황색·전적색)에 판단 시각이 와도 신호 상태를 바꾸지 않는다(SUMO-RL 기본은 현재 녹색 상태를 다시 써서
+    전환을 끊어 버린다. 황색 4초 < 판단 간격 5초일 때는 일어나지 않던 일이다).
+    """
+    global _RULE_SIGNAL_CLASS
+    if _RULE_SIGNAL_CLASS is None:
+        from sumo_rl.environment.traffic_signal import TrafficSignal
+
+        class RuleTrafficSignal(TrafficSignal):
+            def _build_phases(self):
+                super()._build_phases()
+                self.base_yellow = self.yellow_time
+                self.all_red = {}
+                self.all_red_state = {}
+                self._from_green = None
+                if self.env.fixed_ts:
+                    return
+                from focused_data import variant
+                self.all_red = variant()["all_red"]
+                self.all_red_state = {pair: self.all_phases[idx].state.replace("y", "r")
+                                      for pair, idx in self.yellow_dict.items()}
+
+            def set_next_phase(self, new_phase):
+                if self.is_yellow:
+                    self.next_action_time = self.env.sim_step + self.delta_time
+                    return
+                before = self.green_phase
+                super().set_next_phase(new_phase)
+                if self.is_yellow and self.green_phase != before:       # 전환이 시작됐다
+                    self._from_green = before
+                    self.yellow_time = self.base_yellow + self.all_red.get((before, self.green_phase), 0)
+
+            def update(self):
+                self.time_since_last_phase_change += 1
+                if not self.is_yellow:
+                    return
+                t = self.time_since_last_phase_change
+                if t == self.base_yellow and self.yellow_time > self.base_yellow:
+                    self.sumo.trafficlight.setRedYellowGreenState(
+                        self.id, self.all_red_state[(self._from_green, self.green_phase)])
+                if t == self.yellow_time:
+                    self.sumo.trafficlight.setRedYellowGreenState(self.id, self.all_phases[self.green_phase].state)
+                    self.is_yellow = False
+
+        _RULE_SIGNAL_CLASS = RuleTrafficSignal
+    return _RULE_SIGNAL_CLASS
+
+
 def make_environment(*, net_file: Path, route_file: Path, simulation_duration_sec: int, observation_class,
                      reward_fn, seed: int = 42, fixed_ts: bool = False, additional_sumo_cmd: str | None = None,
                      record_per_second_queue: bool = False, extra_queue_edges: list[str] | None = None,
@@ -54,6 +109,8 @@ def make_environment(*, net_file: Path, route_file: Path, simulation_duration_se
             raise FileNotFoundError(f"필요한 파일이 없습니다: {path}")
     configure_sumo()
     from sumo_rl import SumoEnvironment
+    import sumo_rl.environment.env as sumo_rl_env
+    sumo_rl_env.TrafficSignal = rule_signal_class()      # 환경이 신호 객체를 만들 때 쓰는 클래스
 
     class FocusedEnvironment(SumoEnvironment):
         warmup_states: list[str] = []
@@ -70,6 +127,7 @@ def make_environment(*, net_file: Path, route_file: Path, simulation_duration_se
             greens = [p.state for p in ts.green_phases]
             ts.green_phase = greens.index(self.warmup_handover)
             ts.is_yellow = False
+            ts.yellow_time = getattr(ts, "base_yellow", ts.yellow_time)     # 넘겨받은 녹색은 전환 중이 아니다
             ts.time_since_last_phase_change = 0
             ts.next_action_time = self.sim_step
             self.sumo.trafficlight.setRedYellowGreenState(TARGET_TLS, self.warmup_handover)
