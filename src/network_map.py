@@ -5,12 +5,15 @@ SN2022… 교차로). SUMO에서 이런 곳은 차가 두 교차로 안에 걸�
 08-11 12개 지도 시험 주행에서 막힘·충돌·하루 교착의 시작이 이런 곳(201330 옆 0.2m, cluster 옆 1.7m, 204922·605257 0.29m,
 201300 옆 4.6m, 201286 옆 8.8m 등)에 모였다.
 신호 교차로와 그 연결은 건드리지 않는다(아래 검사).
+같은 netconvert에서 실제 도로와 다르게 그려진 비신호 교차로 차로 연결도 고친다(CONNECTION_FIXES, 10-17: 송내대로사거리
+동쪽 접근의 우회전 전용 차로, 진행 기록 73절).
 
 만드는 순서(순서가 중요): 원본에 netconvert로 합치기 → focused_data와 같은 함수로 북쪽 연장.
 netconvert는 차로 모양을 교차로 위치로 다시 계산하므로, 연장을 먼저 하면 연장이 지워진다(287.1m → 47.1m).
 
 검사(만들 때마다): 신호 연결 249개·신호 프로그램이 원본과 같음, 없어진 도로 = 합친 짝 사이의 10m 미만 도로뿐,
-석천사거리 단독 모형이 쓰는 도로는 모두 남음, 남은 도로의 차로 수·허용 차종·속도가 같음, 북쪽 연장 도로가 원본 + 240m.
+석천사거리 단독 모형이 쓰는 도로는 모두 남음, 남은 도로의 차로 수·허용 차종·속도가 같음, 북쪽 연장 도로가 원본 + 240m,
+고친 차로 연결이 원본에서는 고치기 전 모양이고 새 지도에서는 고친 뒤 모양.
 사용: .venv/bin/python src/network_map.py   (만들고 검사, 몇 초)
 """
 from __future__ import annotations
@@ -51,11 +54,20 @@ JOINS = [
     (("201286", "203737"), "477654165_01/02", 8.77, "204822–201293 사이"),
 ]
 MAX_JOIN_EDGE_M = 10.0
+# 실제 도로와 다르게 그려진 차로 연결 고침: (들어오는 도로, 나가는 도로, 바꾸기 전 [(들어오는 차로, 나가는 차로)], 바꾼 뒤, 근거).
+# 차로 번호 0이 맨 오른쪽이다. 신호 교차로가 아닌 곳만 고친다(신호 연결은 원본과 같아야 함).
+CONNECTION_FIXES = [
+    ("477714244_02_01", "477765074_01", [(0, 0), (1, 1), (2, 2)], [(1, 0), (2, 1), (3, 2)],
+     "송내대로사거리(cluster) 동쪽 접근 정지선 앞 41m 도로(교차로 205201): 맨 오른쪽 차로는 실제로 우회전 전용"
+     "(로드뷰 2025-12: 정지선 약 90m 앞부터 실선, 약 50m 앞 우회전 화살표). 원본은 직진·우회전을 같이 써서 적색에 선 직진 차가"
+     " 신호 없는 우회전 길까지 막고 줄이 석천사거리 안까지 번졌다(진행 기록 72·73절). 직진 연결을 한 칸씩 옮겨 한 차로가 두 차로로"
+     " 갈라지지 않게 한다(갈라지면 SUMO가 옆 충돌로 셈)."),
+]
 
 
 def _digest() -> str:
     h = hashlib.sha256(fd.NETWORK.read_bytes())
-    h.update(json.dumps([JOINS, fd.variant()["north_extension_edge"], fd.variant()["north_extension_m"]]).encode())
+    h.update(json.dumps([JOINS, CONNECTION_FIXES, fd.variant()["north_extension_edge"], fd.variant()["north_extension_m"]]).encode())
     h.update(Path(__file__).read_bytes())
     return h.hexdigest()[:12]
 
@@ -71,13 +83,21 @@ def network_12() -> Path:
     for group, *_ in JOINS:
         ET.SubElement(root, "join", nodes=" ".join(group))
     ET.ElementTree(root).write(nodes, encoding="utf-8", xml_declaration=True)
+    cons = CACHE / "fix.con.xml"
+    root = ET.Element("connections")
+    for frm, to, before, after, _ in CONNECTION_FIXES:
+        for a, b in before:
+            ET.SubElement(root, "delete", {"from": frm, "to": to, "fromLane": str(a), "toLane": str(b)})
+        for a, b in after:
+            ET.SubElement(root, "connection", {"from": frm, "to": to, "fromLane": str(a), "toLane": str(b)})
+    ET.ElementTree(root).write(cons, encoding="utf-8", xml_declaration=True)
     joined = path.with_suffix(f".{os.getpid()}.joined.xml")
     from focused_sumo import configure_sumo
     configure_sumo()
     import sumolib
     log = path.with_suffix(".netconvert.log")
     with log.open("w") as f:
-        subprocess.run([sumolib.checkBinary("netconvert"), "-s", str(fd.NETWORK), "-n", str(nodes), "-o", str(joined)],
+        subprocess.run([sumolib.checkBinary("netconvert"), "-s", str(fd.NETWORK), "-n", str(nodes), "-x", str(cons), "-o", str(joined)],
                        check=True, stdout=f, stderr=subprocess.STDOUT)
     v = fd.variant()
     text = joined.read_text(encoding="utf-8")
@@ -103,6 +123,17 @@ def _load(path: Path):
                  for c in r.iter("connection") if c.get("tl")}
     programs = {t.get("id"): [(p.get("duration"), p.get("state")) for p in t.iter("phase")] for t in r.iter("tlLogic")}
     return edges, tls_links, programs
+
+
+def _lane_links(path: Path) -> dict:
+    """(들어오는 도로, 나가는 도로) → [(들어오는 차로, 나가는 차로)] (CONNECTION_FIXES가 고치는 도로만)."""
+    want = {(frm, to) for frm, to, *_ in CONNECTION_FIXES}
+    out = {}
+    for c in ET.parse(path).getroot().iter("connection"):
+        key = (c.get("from"), c.get("to"))
+        if key in want:
+            out.setdefault(key, []).append((int(c.get("fromLane")), int(c.get("toLane"))))
+    return {k: sorted(v) for k, v in out.items()}
 
 
 def join_edges(original: Path) -> set[str]:
@@ -158,12 +189,19 @@ def verify(original: Path, built: Path) -> dict:
         got = eb[ext]
         if max(abs(a[4] - b[4]) for a, b in zip(want, got)) > 1.0:
             problems.append(f"북쪽 연장 길이 {[l[4] for l in got]} ≠ v6 {[l[4] for l in want]}")
+    ca, cb = _lane_links(original), _lane_links(built)
+    for frm, to, before, after, _ in CONNECTION_FIXES:
+        if ca.get((frm, to)) != sorted(before):
+            problems.append(f"{frm}→{to} 원본 연결 {ca.get((frm, to))}이 고치기 전 {sorted(before)}와 다름")
+        if cb.get((frm, to)) != sorted(after):
+            problems.append(f"{frm}→{to} 연결 {cb.get((frm, to))}이 고친 뒤 {sorted(after)}와 다름")
     if problems:
         raise ValueError("12개 지도 검사 실패: " + "; ".join(problems))
     changed = {e: (round(ea[e][0][4], 1), round(eb[e][0][4], 1)) for e in set(ea) & set(eb)
                if abs(ea[e][0][4] - eb[e][0][4]) > 0.5}
     return {"removed_edges": removed, "tls_links": len(tb), "length_changed_edges": dict(sorted(changed.items())),
-            "north_extension": [l[4] for l in eb[ext]]}
+            "north_extension": [l[4] for l in eb[ext]],
+            "connection_fixes": {f"{frm}>{to}": cb[(frm, to)] for frm, to, *_ in CONNECTION_FIXES}}
 
 
 def main() -> None:

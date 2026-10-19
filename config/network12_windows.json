@@ -1,5 +1,5 @@
 {
-  "version": "network12_windows_20261016",
+  "version": "network12_windows_20261018",
   "description": "12개 지도 90분 조각 점검 결과(network_windows.py). 고정신호(원자료)로 막힌 조각의 제어 시작 시각. 학습은 제어 60분이 막힌 조각의 제어 시간과 겹치는 시나리오를 빼고, 평가는 검증 날짜의 막히지 않은 조각만 쓴다.",
   "background": 0.8,
   "uturn_201293": "drop",
@@ -52,9 +52,5 @@
     "20221030"
   ],
   "windows_screened": 345,
-  "failed": {
-    "20220823": [
-      18
-    ]
-  }
+  "failed": {}
 }

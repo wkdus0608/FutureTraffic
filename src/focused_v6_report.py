@@ -39,18 +39,33 @@ def load_runs(root: Path) -> list[dict]:
 
 
 def pooled(runs: list[dict]) -> dict:
+    """정책 하나의 묶음 요약. DQN처럼 학습 seed가 여럿이면 개수 열(300초 초과·도착 못 함·충돌·보행·통행 완료)은 seed 평균이다.
+
+    10-16 전에는 모든 실행을 더해서, seed 5개인 DQN 줄의 개수가 실행이 하나인 고정신호 줄의 5배로 찍혔다.
+    지연·통행 시간은 차량 가중 평균이라 seed 수와 상관없다. seed가 둘 이상이면 seed별 지연의 표준편차를 붙인다.
+    """
     n = sum(r["all"]["vehicles"] for r in runs)
-    out = {"runs": len(runs), "days": len({r["date"] for r in runs}), "vehicles": n,
+    seeds = sorted({r.get("train_seed") for r in runs if r.get("train_seed") is not None})
+    k = max(1, len(seeds))
+    out = {"runs": len(runs), "days": len({r["date"] for r in runs}), "seeds": len(seeds), "vehicles": n / k,
            "mean_delay_s": sum(r["all"]["mean_delay_s"] * r["all"]["vehicles"] for r in runs) / n,
-           "long_waits": sum(r["all"]["long_waits"] for r in runs),
-           "not_arrived": sum(r["all"]["not_arrived"] for r in runs),
-           "unexplained": sum(len(r["collisions_unexplained"]) for r in runs),
-           "ped_over": sum(c["waits_over_limit"] for r in runs for c in r["pedestrian"].values())}
+           "long_waits": sum(r["all"]["long_waits"] for r in runs) / k,
+           "not_arrived": sum(r["all"]["not_arrived"] for r in runs) / k,
+           "unexplained": sum(len(r["collisions_unexplained"]) for r in runs) / k,
+           "ped_over": sum(c["waits_over_limit"] for r in runs for c in r["pedestrian"].values()) / k}
+    if len(seeds) > 1:
+        import statistics
+        per_seed = []
+        for s in seeds:
+            rs = [r for r in runs if r.get("train_seed") == s]
+            m = sum(r["all"]["vehicles"] for r in rs)
+            per_seed.append(sum(r["all"]["mean_delay_s"] * r["all"]["vehicles"] for r in rs) / m)
+        out["mean_delay_s_std"] = statistics.stdev(per_seed)
     trips = [r["_trip"] for r in runs if r["_trip"]]
     if len(trips) == len(runs):
         count = sum(c for c, _ in trips)
         out["travel_s"] = sum(c * d for c, d in trips) / count
-        out["completed"] = count
+        out["completed"] = count / k
     for key, name in ((LEFT_EAST, "left_east"), (LEFT_SOUTH, "left_south")):
         v = [(r["all"]["by_movement"][key]["vehicles"], r["all"]["by_movement"][key]["mean_delay_s"])
              for r in runs if key in r["all"]["by_movement"]]
@@ -88,16 +103,19 @@ def main() -> None:
     lines = ["| 환경 | 정책 | 도착 | 날짜 | 실행 | 차량당 지연(초) | 300초 초과(대) | 도착 못 함 | 평균 통행 시간(초) | 통행 완료(대) | "
              "길주로 동쪽 좌회전(초) | 석천로 남쪽 좌회전(초) | 보행 한도 초과 | 확인 안 된 충돌 |",
              "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    num = lambda x: f"{x:,.0f}" if float(x).is_integer() else f"{x:,.1f}"
     for (name, policy, arrivals), runs in sorted(groups.items(), key=lambda kv: (kv[0][2], kv[0][0],
                                                                                 POLICY_ORDER.index(kv[0][1]))):
         s = pooled(runs)
-        seeds = len({r.get("train_seed") for r in runs if r.get("train_seed") is not None})
-        label = LABEL.get(policy, policy) + (f"(seed {seeds}개)" if seeds else "")
-        lines.append(f"| {name} | {label} | {arrivals} | {s['days']} | {s['runs']} | {s['mean_delay_s']:.2f} | "
-                     f"{s['long_waits']} | {s['not_arrived']} | {fmt(s.get('travel_s'))} | "
-                     f"{'—' if 'completed' not in s else f'{s['completed']:,}'} | {fmt(s['left_east'])} | {fmt(s['left_south'])} | "
-                     f"{s['ped_over']} | {s['unexplained']} |")
-    lines += ["", "날짜 목록: " + "; ".join(f"{n}: {len(d)}일" for n, d in sorted(dates.items()))]
+        label = LABEL.get(policy, policy) + (f"(seed {s['seeds']}개 평균)" if s["seeds"] else "")
+        delay = f"{s['mean_delay_s']:.2f}" + (f" ± {s['mean_delay_s_std']:.2f}" if "mean_delay_s_std" in s else "")
+        lines.append(f"| {name} | {label} | {arrivals} | {s['days']} | {s['runs']} | {delay} | "
+                     f"{num(s['long_waits'])} | {num(s['not_arrived'])} | {fmt(s.get('travel_s'))} | "
+                     f"{'—' if 'completed' not in s else num(s['completed'])} | {fmt(s['left_east'])} | {fmt(s['left_south'])} | "
+                     f"{num(s['ped_over'])} | {num(s['unexplained'])} |")
+    lines += ["", "날짜 목록: " + "; ".join(f"{n}: {len(d)}일" for n, d in sorted(dates.items())),
+              "", "seed가 여럿인 줄(DQN)의 개수 열(300초 초과·도착 못 함·통행 완료·보행 한도 초과·확인 안 된 충돌)은 seed 평균이고, "
+              "지연의 ± 는 seed 사이 표준편차다. 실행 열은 그 줄에 들어간 실행 수(날짜 × seed)다."]
     text = "\n".join(lines) + "\n"
     print(text)
     if args.out:

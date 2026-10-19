@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import tempfile
 import time
@@ -39,6 +40,9 @@ CONTROL_S = 3600     # DQN이 신호를 고르는 시간
 DQN_SETTINGS = {"learning_rate": 1e-3, "buffer_size": 100_000, "learning_starts": 1_000, "batch_size": 64,
                 "train_freq": 4, "target_update_interval": 5_000, "exploration_fraction": 0.2,
                 "exploration_initial_eps": 1.0, "exploration_final_eps": 0.05}
+# 학습 설정 비교 실험(10-18, 진행 기록 75절): 목표망 교체 간격만 바꿔 학습한다. 비우면 기본값(5,000). 학습 기록의 dqn에 남는다.
+if os.environ.get("FOCUSED_DQN_TARGET_UPDATE"):
+    DQN_SETTINGS["target_update_interval"] = int(os.environ["FOCUSED_DQN_TARGET_UPDATE"])
 
 
 def training_scenarios(counts: dict, split_file: Path = SPLIT_FILE) -> list[tuple[str, str]]:
