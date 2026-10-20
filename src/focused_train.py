@@ -43,6 +43,12 @@ DQN_SETTINGS = {"learning_rate": 1e-3, "buffer_size": 100_000, "learning_starts"
 # 학습 설정 비교 실험(10-18, 진행 기록 75절): 목표망 교체 간격만 바꿔 학습한다. 비우면 기본값(5,000). 학습 기록의 dqn에 남는다.
 if os.environ.get("FOCUSED_DQN_TARGET_UPDATE"):
     DQN_SETTINGS["target_update_interval"] = int(os.environ["FOCUSED_DQN_TARGET_UPDATE"])
+# [추가 탐색](10-19, 진행 기록 81절, src/explore_dqn.py): n-step, Double DQN, 에이징 보상. 비우면 기본값(공식 결과와 같음).
+if os.environ.get("FOCUSED_DQN_NSTEPS"):
+    DQN_SETTINGS["n_steps"] = int(os.environ["FOCUSED_DQN_NSTEPS"])
+EXPLORE = {"double_dqn": os.environ.get("FOCUSED_DQN_DOUBLE") == "1", "reward": os.environ.get("FOCUSED_REWARD", "queue")}
+if EXPLORE["reward"] not in ("queue", "aging"):
+    raise SystemExit(f"FOCUSED_REWARD={EXPLORE['reward']}는 queue 또는 aging만 됩니다.")
 
 
 def training_scenarios(counts: dict, split_file: Path = SPLIT_FILE) -> list[tuple[str, str]]:
@@ -74,6 +80,8 @@ class WarmStartTrainingEnv(gym.Env):
         super().__init__()
         from focused_rl import ZoneObservation, zone_queue_reward
         from focused_sumo import make_environment
+        if EXPLORE["reward"] == "aging":
+            from explore_dqn import aging_queue_reward as zone_queue_reward
         self.scenarios, self.counts = scenarios, counts
         self.rng = random.Random(seed)
         self.seed_base, self.episode = seed, 0
@@ -150,6 +158,9 @@ def train(args) -> None:
 
     from focused_rl import CROSSWALK_MIN_GREEN, CROSSWALKS, SignalConstraints, hold_aware_dqn_class
     DQN = hold_aware_dqn_class()
+    if EXPLORE["double_dqn"]:
+        from explore_dqn import double_hold_aware_dqn_class
+        DQN = double_hold_aware_dqn_class()
 
     counts = load_counts(COUNTS)
     scenarios = training_scenarios(counts, Path(args.split_file))
@@ -196,6 +207,7 @@ def train(args) -> None:
         "arrival_window_s": ARRIVAL_WINDOW_S, "driver_model_vtype_attributes": driver_vtype_attributes(),
         "entry_branches": ENTRY_BRANCHES, "seconds_this_run": round(time.time() - started, 1),
         "dqn": {**DQN_SETTINGS, "algorithm": "HoldAwareDQN: 실제 실행 행동 저장, 미래 가치와 행동 선택 모두 그대로 실행될 행동 안에서"},
+        "explore": EXPLORE,
         "signal_constraints": {
             "vehicle_max_cumulative_wait_s": constraints.max_wait, "phase_min_green_s": constraints.phase_min,
             "crosswalks": {n: {"min_green_s": CROSSWALK_MIN_GREEN[n], "max_wait_s": c["max_wait"],
