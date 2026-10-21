@@ -46,6 +46,8 @@ if os.environ.get("FOCUSED_DQN_TARGET_UPDATE"):
 # [추가 탐색](10-19, 진행 기록 81절, src/explore_dqn.py): n-step, Double DQN, 에이징 보상. 비우면 기본값(공식 결과와 같음).
 if os.environ.get("FOCUSED_DQN_NSTEPS"):
     DQN_SETTINGS["n_steps"] = int(os.environ["FOCUSED_DQN_NSTEPS"])
+if os.environ.get("FOCUSED_DQN_GAMMA"):            # 91절: 할인율(비우면 stable-baselines3 기본 0.99)
+    DQN_SETTINGS["gamma"] = float(os.environ["FOCUSED_DQN_GAMMA"])
 EXPLORE = {"double_dqn": os.environ.get("FOCUSED_DQN_DOUBLE") == "1", "reward": os.environ.get("FOCUSED_REWARD", "queue")}
 if EXPLORE["reward"] not in ("queue", "aging"):
     raise SystemExit(f"FOCUSED_REWARD={EXPLORE['reward']}는 queue 또는 aging만 됩니다.")

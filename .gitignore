@@ -9,6 +9,7 @@ __pycache__/
 # 자료와 실행 결과는 Git에 넣지 않는다(설명 파일 data/README.md만 넣는다).
 data/raw/
 data/derived/
+data/extra/
 results/
 
 # 예전 위치(2026-10-05 정리로 프로젝트 밖 보관 폴더로 옮김). 되돌려 놓아도 Git에 섞이지 않게 둔다.
