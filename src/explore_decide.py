@@ -16,6 +16,9 @@ DQN은 모델 파일 지문으로 골라 seed 5개를 묶는다. 계산은 표�
 - COORD(12개 지도 연동 정보 관측, 96절): 기준 DQN은 B12 모델, 후보는 src/explore_coord12.py 모델. 채택 기준은 B12와 같은 네 가지
   (구간 지연 2.2초 이상 감소, 300초 초과·좌회전 두 곳이 늘지 않음). 원인 확인은 따로: 저녁 16~19시 길주로 동 → 서 직진 지연이
   B12보다 10초 이상 짧으면 '노린 곳에서 작동'. 고정신호(원자료·보정)·단순 제어·기존 DQN(75절, --ref-dir·--ref-models)은 함께 적는다.
+- PRED1·PRED12(예측 제어, 98절): 고르지 않고 비교만 한다. 두 정책 X·Y에서 X의 지연이 문턱(단독 1.3초, 12개 지도 2.2초) 이상 짧고
+  300초 초과·좌회전 두 곳이 늘지 않으면 'X가 낫다', 문턱 이상 길면 'X가 못하다', 그 밖은 '차이 없음'. 98.4의 해석 1~6을 그대로 붙인다.
+  PRED1은 단독 모형(검증 2일 무작위가 주, 무리 도착은 민감도, 학습 13일은 학습 없는 정책만), PRED12는 12개 지도 검증 46조각 × 5번.
 
 사용:
   python src/explore_decide.py B --base-dir <v6_check/평가 지문> --base-models <v6 pet1 seed 5개> \
@@ -24,6 +27,11 @@ DQN은 모델 파일 지문으로 골라 seed 5개를 묶는다. 계산은 표�
   python src/explore_decide.py COORD --base-dir <explore_12map/평가 지문> --base-models <B12 seed 5개> \
       --cand-dir <explore_12map_coord/평가 지문> --cand-models <연동 모델 seed 5개> \
       --ref-dir <eval_12map/평가 지문> --ref-models <75절 모델 seed 5개> --out <decision_COORD.json>
+  python src/explore_decide.py PRED1 --pred-dir <explore_pred/single/평가 지문> --v6-dir <v6_check/평가 지문> --v6-models <v6 seed 5개> \
+      --h1-dir <explore_single/eval/평가 지문> --h1-models <H1 seed 5개> --out <decision_PRED1.json>
+  python src/explore_decide.py PRED12 --pred-dir <explore_pred/network12/평가 지문> --ref-dir <eval_12map/평가 지문> --ref-models <75절 5개> \
+      --base-dir <explore_12map/평가 지문> --base-models <B12 5개> --cand-dir <explore_12map_coord/평가 지문> --cand-models <COORD 5개> \
+      --out <decision_PRED12.json>
 """
 from __future__ import annotations
 
@@ -136,6 +144,177 @@ def decide_coord(args) -> dict:
     return result
 
 
+
+# ------------------------------------------------------------------ 예측 제어(98절)
+PRED_TAGS = {"p0": "pred_p0", "p1": "pred_p1", "p2": "pred_p2"}
+
+
+def verdict(x: dict, y: dict, threshold: float, delay: str, long: str) -> dict:
+    """98.4: X가 Y보다 낫다 / 못하다 / 차이 없음. 주고받은 것(300초 초과·좌회전)도 적는다."""
+    d = x[delay] - y[delay]
+    no_worse = x[long] <= y[long] and x["left_east"] <= y["left_east"] and x["left_south"] <= y["left_south"]
+    word = "낫다" if -d >= threshold and no_worse else "못하다" if d >= threshold else "차이 없음"
+    return {"word": word, "delay_diff_s": round(d, 2), "long_diff": round(x[long] - y[long], 2),
+            "left_east_diff_s": round(x["left_east"] - y["left_east"], 2),
+            "left_south_diff_s": round(x["left_south"] - y["left_south"], 2), "threshold_s": threshold}
+
+
+def versus_fixedc(x: dict, fixedc: dict, delay: str) -> dict:
+    return {"delay_diff_s": round(x[delay] - fixedc[delay], 2), "percent": round(100 * (x[delay] - fixedc[delay]) / fixedc[delay], 1)}
+
+
+def interpret(c: dict, network: bool) -> list[str]:
+    """98.4 미리 정한 해석. c = 비교 이름 → verdict."""
+    out = []
+    w = c["P0_vs_greedy"]["word"]
+    out.append("1. 같은 정보에서 내다보는 계산이 단순 규칙보다 낫다." if w == "낫다" else
+               "1. 120초를 내다봐도 단순 규칙과 같다." if w == "차이 없음" else "1. 같은 정보에서 내다보는 계산이 단순 규칙보다 못하다.")
+    out.append("2. 감지 구간 안 도착 예측이 몫이 있다." if c["P1_vs_P0"]["word"] == "낫다" else
+               f"2. 감지 구간 안 도착 예측의 몫은 보이지 않는다(P1이 P0보다 {c['P1_vs_P0']['word']}).")
+    if network:
+        m = c["mechanism"]
+        ok = c["P2_vs_P1"]["word"] == "낫다" and m["evening_east_straight_gain_s"] >= MECH_12_S
+        out.append("3. 이웃 신호 정보가 계산형 제어에서는 작동한다." if ok else
+                   f"3. 이웃 신호 정보가 계산형 제어에서 작동했다고 말할 수 없다(P2가 P1보다 {c['P2_vs_P1']['word']}, "
+                   f"저녁 동 → 서 직진 {m['evening_east_straight_gain_s']:+.2f}초 줄어듦, 기준 {MECH_12_S:.0f}초).")
+    for name, v in c.items():
+        if not name.startswith("4_"):
+            continue
+        p, dqn = name[2:].split("_vs_")
+        if v["word"] == "낫다":
+            out.append(f"4. {p} 대 {dqn}: 이 환경에서 이 DQN은 그 정보를 가진 계산형 제어를 넘지 못한다.")
+        elif v["word"] == "못하다":
+            out.append(f"4. {p} 대 {dqn}: 학습이 계산형 제어가 못 잡는 것을 배웠다.")
+        else:
+            out.append(f"4. {p} 대 {dqn}: 차이 없음.")
+    return out
+
+
+def _single_rows(folder: Path, dates: list[str], tag: str, arrivals: str) -> list[dict]:
+    import xml.etree.ElementTree as ET
+    rows = []
+    for d in dates:
+        run = folder / d / f"{tag}_eval42{'' if arrivals == 'random' else '_' + arrivals}"
+        if not (run / "metrics.json").exists():
+            raise SystemExit(f"빠진 실행: {run}")
+        row = _read(run / "metrics.json")
+        row["_trip"], row["_run"] = None, run
+        if (run / "statistics.xml").exists():
+            t = ET.parse(run / "statistics.xml").getroot().find("vehicleTripStatistics")
+            if t is not None:
+                row["_trip"] = (int(t.get("count")), float(t.get("duration")))
+        rows.append(row)
+    return rows
+
+
+def _dqn_rows(folder: Path, dates: list[str], models: list[str], arrivals: str) -> list[dict]:
+    tag = dqn_tag(models)
+    from focused_eval import model_identity
+    return [r for m in models for r in _single_rows(folder, dates, tag(model_identity(m)["train_seed"]), arrivals)]
+
+
+def pet_counts(rows: list[dict]) -> dict:
+    """실행마다 events.json.gz의 전환별 통과 후 간격(끝나는 녹색 차가 먼저 지난 경우)으로 PET < 0·< 1초 수."""
+    import gzip
+    below0 = below1 = transitions = 0
+    for r in rows:
+        path = r["_run"] / "events.json.gz"
+        if not path.exists():
+            raise SystemExit(f"PET 기록이 없습니다: {path}")
+        with gzip.open(path, "rt") as f:
+            for e in json.load(f):
+                transitions += 1
+                p = (e.get("pet") or {}).get("clearing_first")
+                if p is not None:
+                    below0 += p["pet"] < 0
+                    below1 += p["pet"] < 1
+    return {"transitions": transitions, "pet_below_0": below0, "pet_below_1": below1}
+
+
+def pred_stats(rows: list[dict]) -> dict:
+    stats = [r["pred"] for r in rows]
+    if len({(s["horizon_s"], s["code"]) for s in stats}) != 1:
+        raise SystemExit(f"예측 제어 실행의 내다보는 길이·코드가 섞였습니다: {sorted({(s['horizon_s'], s['code']) for s in stats})}")
+    planned = sum(s["planned"] for s in stats)
+    return {"horizon_s": stats[0]["horizon_s"], "code": stats[0]["code"], "runs": len(stats), "planned": planned,
+            "mean_seconds": round(sum(s["seconds"] for s in stats) / max(1, planned), 4),
+            "max_seconds": round(max(s["max_seconds"] for s in stats), 3), "outside_allowed": sum(s["outside_allowed"] for s in stats),
+            "changed_by_rules": sum(sum(r["guard"]["changed_by_rules"].values()) for r in rows)}
+
+
+def decide_pred_single(args) -> dict:
+    split = json.loads((Path(__file__).resolve().parents[1] / "config/focused_split.json").read_text())
+    pred, v6, h1 = Path(args.pred_dir), Path(args.v6_dir), Path(args.h1_dir)
+    out = {"rule": "PRED1", "threshold_s": DELAY_S}
+
+    def groups(dates, arrivals, training=False):
+        g = {"fixed": _single_rows(pred if training else v6, dates, "fixed", arrivals),
+             "fixedc": _single_rows(v6, dates, "fixedc", arrivals), "greedy": _single_rows(v6, dates, "greedy", arrivals),
+             "P0": _single_rows(pred, dates, PRED_TAGS["p0"], arrivals), "P1": _single_rows(pred, dates, PRED_TAGS["p1"], arrivals)}
+        if not training:
+            g["dqn_v6"] = _dqn_rows(v6, dates, args.v6_models, arrivals)
+            g["dqn_h1"] = _dqn_rows(h1 if arrivals == "random" else pred, dates, args.h1_models, arrivals)
+        return g
+
+    def compare(g):
+        s = {k: summary(v) for k, v in g.items()}
+        c = {"P0_vs_greedy": verdict(s["P0"], s["greedy"], DELAY_S, "mean_delay_s", "long_waits"),
+             "P1_vs_P0": verdict(s["P1"], s["P0"], DELAY_S, "mean_delay_s", "long_waits")}
+        for dqn in ("dqn_v6", "dqn_h1"):
+            if dqn in s:
+                c[f"4_P1_vs_{dqn}"] = verdict(s["P1"], s[dqn], DELAY_S, "mean_delay_s", "long_waits")
+        c["5_vs_fixedc"] = {p: versus_fixedc(s[p], s["fixedc"], "mean_delay_s") for p in ("P0", "P1")}
+        return s, c
+
+    for name, dates, arrivals, training in (("validation_random", VALIDATION, "random", False),
+                                            ("validation_platoon", VALIDATION, "platoon", False),
+                                            ("training13_random", split["train"], "random", True)):
+        g = groups(dates, arrivals, training)
+        s, c = compare(g)
+        out[name] = {"dates": dates, "summary": s, "comparisons": c,
+                     "safety": {p: pet_counts(g[p]) for p in ("P0", "P1")}, "pred": {p: pred_stats(g[p]) for p in ("P0", "P1")}}
+    main = out["validation_random"]["comparisons"]
+    out["interpretation"] = interpret({k: v for k, v in main.items() if k != "5_vs_fixedc"}, network=False)
+    t = out["training13_random"]["comparisons"]
+    same = all(t[k]["word"] == main[k]["word"] for k in ("P0_vs_greedy", "P1_vs_P0"))
+    out["interpretation"].append("6. 날짜를 넓혀도 같다(학습 13일, 학습 없는 정책끼리)." if same else
+                                 "6. 검증 2일 결과는 그 2일에 기댄 것일 수 있다(학습 13일에서 1·2번 판정이 다름).")
+    unsafe = [f"{n}:{p}" for n in ("validation_random", "validation_platoon", "training13_random")
+              for p, v in out[n]["safety"].items() if v["pet_below_0"] > 0]
+    out["safety_note"] = ("PET < 0 없음" if not unsafe else f"PET < 0 있음 → 한계로 적고 재현으로 원인 확인: {unsafe}")
+    return out
+
+
+def decide_pred_12(args) -> dict:
+    pred, ref = Path(args.pred_dir), Path(args.ref_dir)
+    g = {"fixed": windows12(ref, lambda s: "fixed"), "fixedc": windows12(ref, lambda s: "fixedc"),
+         "greedy": windows12(ref, lambda s: "greedy"), "dqn_75": windows12(ref, dqn_tag(args.ref_models)),
+         "dqn_b12": windows12(Path(args.base_dir), dqn_tag(args.base_models)),
+         "dqn_coord": windows12(Path(args.cand_dir), dqn_tag(args.cand_models))}
+    for v, tag in PRED_TAGS.items():
+        g[v.upper()] = windows12(pred, lambda s, tag=tag: tag)
+    s = {k: summary12(v) for k, v in g.items()}
+    v12 = lambda a, b: verdict(s[a], s[b], DELAY_12_S, "delay", "long")
+    east = {k: movement12(v, EAST_STRAIGHT_12, EVENING_12) for k, v in g.items()}
+    c = {"P0_vs_greedy": v12("P0", "greedy"), "P1_vs_P0": v12("P1", "P0"), "P2_vs_P1": v12("P2", "P1"),
+         "mechanism": {"evening_east_straight_gain_s": round(east["P1"] - east["P2"], 2), "threshold_s": MECH_12_S},
+         "4_P1_vs_dqn_75": v12("P1", "dqn_75"), "4_P1_vs_dqn_b12": v12("P1", "dqn_b12"), "4_P2_vs_dqn_coord": v12("P2", "dqn_coord")}
+    out = {"rule": "PRED12", "threshold_s": DELAY_12_S, "dates": VALIDATION, "all_windows": s,
+           "without_" + UNSTABLE_12: {k: summary12(v, UNSTABLE_12) for k, v in g.items()},
+           "evening_east_straight_s": east, "comparisons": c,
+           "5_vs_fixedc": {p: versus_fixedc(s[p], s["fixedc"], "delay") for p in ("P0", "P1", "P2")}}
+    out["interpretation"] = interpret(c, network=True)
+    safety, stats = {}, {}
+    for v, tag in PRED_TAGS.items():
+        runs = [_read(w / f"{tag}_eval{sd}" / "metrics.json") for w in sorted((pred / "windows").iterdir())
+                if w.name[:8] in VALIDATION for sd in SEEDS]
+        safety[v.upper()] = {"collisions_in_204820": sum(r["collisions_in_204820"] for r in runs)}
+        stats[v.upper()] = pred_stats(runs)
+    out["safety"], out["pred"] = safety, stats
+    unsafe = [p for p, x in safety.items() if x["collisions_in_204820"] > 0]
+    out["safety_note"] = "석천사거리 안 충돌 없음" if not unsafe else f"석천사거리 안 충돌 있음 → 한계로 적고 재현으로 원인 확인: {unsafe}"
+    return out
+
 def decide_b12(args) -> dict:
     base = windows12(Path(args.base_dir), dqn_tag(args.base_models))
     cand = windows12(Path(args.cand_dir), dqn_tag(args.cand_models))
@@ -225,7 +404,7 @@ def ablation(args) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("rule", choices=("B", "C", "B12", "ABL", "COORD"))
+    ap.add_argument("rule", choices=("B", "C", "B12", "ABL", "COORD", "PRED1", "PRED12"))
     ap.add_argument("--base-dir")
     ap.add_argument("--base-models", nargs=5)
     ap.add_argument("--cand-dir")
@@ -235,12 +414,32 @@ def main() -> None:
     ap.add_argument("--fixedc-dir", help="C: 보정 고정신호 실행이 있는 폴더(v6_check/평가 지문)")
     ap.add_argument("--ref-dir", help="COORD: 고정신호·단순 제어·기존 DQN 실행이 있는 폴더(eval_12map/평가 지문)")
     ap.add_argument("--ref-models", nargs=5, help="COORD: 기존 12개 지도 DQN(75절) seed 5개")
+    ap.add_argument("--pred-dir", help="PRED1·PRED12: 예측 제어 결과 폴더(explore_pred/…/평가 지문)")
+    ap.add_argument("--v6-dir", help="PRED1: 고정신호·단순 제어·v6 DQN 결과(v6_check/평가 지문)")
+    ap.add_argument("--v6-models", nargs=5, help="PRED1: v6 pet1 DQN seed 5개")
+    ap.add_argument("--h1-dir", help="PRED1: H1 무작위 도착 결과(explore_single/eval/평가 지문)")
+    ap.add_argument("--h1-models", nargs=5, help="PRED1: H1(n = 10 + Double) seed 5개")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     if args.rule == "ABL":
         result = ablation(args)
         Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=1))
         print(json.dumps(result, ensure_ascii=False, indent=1))
+        return
+    if args.rule == "PRED1":
+        if not (args.pred_dir and args.v6_dir and args.v6_models and args.h1_dir and args.h1_models):
+            ap.error("PRED1에는 --pred-dir·--v6-dir·--v6-models·--h1-dir·--h1-models가 필요합니다.")
+        result = decide_pred_single(args)
+        Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=1))
+        print(json.dumps({k: result[k] for k in ("interpretation", "safety_note")}, ensure_ascii=False, indent=1))
+        return
+    if args.rule == "PRED12":
+        if not (args.pred_dir and args.ref_dir and args.ref_models and args.base_dir and args.base_models
+                and args.cand_dir and args.cand_models):
+            ap.error("PRED12에는 --pred-dir·--ref-dir·--ref-models·--base-dir·--base-models·--cand-dir·--cand-models가 필요합니다.")
+        result = decide_pred_12(args)
+        Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=1))
+        print(json.dumps({k: result[k] for k in ("interpretation", "safety_note")}, ensure_ascii=False, indent=1))
         return
     if not (args.base_dir and args.base_models and args.cand_dir and args.cand_models):
         ap.error("B·C·B12·COORD에는 --base-dir·--base-models·--cand-dir·--cand-models가 필요합니다.")
