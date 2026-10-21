@@ -13,11 +13,17 @@ DQN은 모델 파일 지문으로 골라 seed 5개를 묶는다. 계산은 표�
 - B12(12개 지도, 85절): 검증 2일 46조각, 학습 seed s 모델을 평가 seed s로. 모든 조각 기준 구간 지연이 기준 DQN(75절 모델)보다
   2.2초 이상 짧고, 300초 초과(1번 평균)가 늘지 않고, 좌회전 두 곳의 구간 지연이 늘지 않으면 '채택'. 흔들리는 조각(09-28 08시)을
   뺀 값과 단순 제어(평가 seed 42~46)는 함께 적되 판정에는 쓰지 않는다.
+- COORD(12개 지도 연동 정보 관측, 96절): 기준 DQN은 B12 모델, 후보는 src/explore_coord12.py 모델. 채택 기준은 B12와 같은 네 가지
+  (구간 지연 2.2초 이상 감소, 300초 초과·좌회전 두 곳이 늘지 않음). 원인 확인은 따로: 저녁 16~19시 길주로 동 → 서 직진 지연이
+  B12보다 10초 이상 짧으면 '노린 곳에서 작동'. 고정신호(원자료·보정)·단순 제어·기존 DQN(75절, --ref-dir·--ref-models)은 함께 적는다.
 
 사용:
   python src/explore_decide.py B --base-dir <v6_check/평가 지문> --base-models <v6 pet1 seed 5개> \
       --cand-dir <explore_single/eval/평가 지문> --cand-models <B seed 5개> --out <decision_B.json>
   python src/explore_decide.py C --base-dir … --base-models … --cand-dir … --cand-models … --fixedc-dir <v6_check/평가 지문> --out <decision_C.json>
+  python src/explore_decide.py COORD --base-dir <explore_12map/평가 지문> --base-models <B12 seed 5개> \
+      --cand-dir <explore_12map_coord/평가 지문> --cand-models <연동 모델 seed 5개> \
+      --ref-dir <eval_12map/평가 지문> --ref-models <75절 모델 seed 5개> --out <decision_COORD.json>
 """
 from __future__ import annotations
 
@@ -30,6 +36,9 @@ DELAY_S, LEFT_C_S = 1.3, 10.0
 DELAY_12_S = 2.2                     # 12개 지도: 기준 DQN seed 표준편차 1.1초의 2배(85절)
 UNSTABLE_12 = "20220928_08"
 LEFT_12 = {"left_east": "477706392_02->477706883_02", "left_south": "477706883_01->477707013_01"}
+EAST_STRAIGHT_12 = "477706392_02->477707013_01"   # 길주로 동 → 서 직진(95절 저녁 손실)
+EVENING_12 = range(16, 20)
+MECH_12_S = 10.0                                   # 96절 원인 확인 기준
 SEEDS = [42, 43, 44, 45, 46]
 
 
@@ -75,11 +84,59 @@ def summary12(per_seed: dict, skip: str | None = None) -> dict:
     return out
 
 
-def decide_b12(args) -> dict:
+def dqn_tag(models):
     from focused_eval import model_identity
-    def dqn_tag(models):
-        ids = {model_identity(m)["train_seed"]: model_identity(m)["model_sha256"][:10] for m in models}
-        return lambda s: f"dqn_seed{s}_{ids[s]}"
+    ids = {model_identity(m)["train_seed"]: model_identity(m)["model_sha256"][:10] for m in models}
+    return lambda s: f"dqn_seed{s}_{ids[s]}"
+
+
+def movement12(per_seed: dict, key: str, hours: range) -> float:
+    """그 시간대 조각에서 한 이동의 구간 지연(차 가중)을 seed마다 구해 평균한다."""
+    import statistics
+    vals = []
+    for rows in per_seed.values():
+        mv = [r["by_movement"][key] for r in rows if int(r["_w"][9:]) in hours and key in r["by_movement"]]
+        vals.append(sum(m["vehicles"] * m["mean_delay_s"] for m in mv) / max(1, sum(m["vehicles"] for m in mv)))
+    return round(statistics.fmean(vals), 2)
+
+
+def decide_coord(args) -> dict:
+    """96절: 기준 DQN = B12 모델(88절), 후보 = 연동 정보 관측 모델. 채택은 B12와 같은 네 가지, 원인 확인은 저녁 동 → 서 직진."""
+    for m in args.cand_models:
+        rec = json.loads((Path(m) / "explore.json").read_text())
+        if rec.get("observation") != "coord" or rec.get("n_steps") != 5:
+            raise SystemExit(f"{m}: 연동 정보 관측(n = 5 + Double) 모델이 아니다: {rec}")
+    for m in args.base_models:
+        rec = json.loads((Path(m) / "explore.json").read_text())
+        if rec.get("observation", "zone") != "zone" or rec.get("n_steps") != 5 or not rec.get("double_dqn"):
+            raise SystemExit(f"{m}: B12(n = 5 + Double, 기존 관측) 모델이 아니다: {rec}")
+    base = windows12(Path(args.base_dir), dqn_tag(args.base_models))
+    cand = windows12(Path(args.cand_dir), dqn_tag(args.cand_models))
+    ref = {"fixed": windows12(Path(args.ref_dir), lambda s: "fixed"), "fixedc": windows12(Path(args.ref_dir), lambda s: "fixedc"),
+           "greedy": windows12(Path(args.ref_dir), lambda s: "greedy"),
+           "dqn_75": windows12(Path(args.ref_dir), dqn_tag(args.ref_models))}
+    groups = {"baseline_b12": base, "candidate_coord": cand, **ref}
+    result = {"rule": "COORD", "dates": VALIDATION,
+              "all_windows": {k: summary12(v) for k, v in groups.items()},
+              "without_" + UNSTABLE_12: {k: summary12(v, UNSTABLE_12) for k, v in groups.items()},
+              "evening_east_straight_s": {k: movement12(v, EAST_STRAIGHT_12, EVENING_12) for k, v in groups.items()}}
+    b, c = result["all_windows"]["baseline_b12"], result["all_windows"]["candidate_coord"]
+    checks = {"구간 지연 2.2초 이상 감소": b["delay"] - c["delay"] >= DELAY_12_S,
+              "300초 초과가 늘지 않음": c["long"] <= b["long"],
+              "길주로 동쪽 좌회전이 늘지 않음": c["left_east"] <= b["left_east"],
+              "석천로 남쪽 좌회전이 늘지 않음": c["left_south"] <= b["left_south"]}
+    result["checks"] = checks
+    result["adopted"] = all(checks.values())
+    e = result["evening_east_straight_s"]
+    gain = round(e["baseline_b12"] - e["candidate_coord"], 2)
+    result["mechanism"] = {"evening_east_straight_gain_s": gain, "threshold_s": MECH_12_S,
+                           "reading": ("연동 정보가 노린 곳에서 작동했다." if gain >= MECH_12_S
+                                       else "노린 곳에서 작동했다고 말할 수 없다.")}
+    result["note"] = "이웃 신호 정보는 DQN만 본다. 결론은 '이웃 신호 정보를 가진 DQN'으로 좁혀 말한다(96절)."
+    return result
+
+
+def decide_b12(args) -> dict:
     base = windows12(Path(args.base_dir), dqn_tag(args.base_models))
     cand = windows12(Path(args.cand_dir), dqn_tag(args.cand_models))
     greedy = windows12(Path(args.base_dir), lambda s: "greedy")
@@ -168,7 +225,7 @@ def ablation(args) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("rule", choices=("B", "C", "B12", "ABL"))
+    ap.add_argument("rule", choices=("B", "C", "B12", "ABL", "COORD"))
     ap.add_argument("--base-dir")
     ap.add_argument("--base-models", nargs=5)
     ap.add_argument("--cand-dir")
@@ -176,6 +233,8 @@ def main() -> None:
     ap.add_argument("--set", nargs=7, action="append", default=[], metavar=("이름", "폴더", "M1", "M2", "M3", "M4", "M5"),
                     help="ABL: 이름(base·double·n5·n10) 폴더 모델 5개")
     ap.add_argument("--fixedc-dir", help="C: 보정 고정신호 실행이 있는 폴더(v6_check/평가 지문)")
+    ap.add_argument("--ref-dir", help="COORD: 고정신호·단순 제어·기존 DQN 실행이 있는 폴더(eval_12map/평가 지문)")
+    ap.add_argument("--ref-models", nargs=5, help="COORD: 기존 12개 지도 DQN(75절) seed 5개")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     if args.rule == "ABL":
@@ -184,7 +243,16 @@ def main() -> None:
         print(json.dumps(result, ensure_ascii=False, indent=1))
         return
     if not (args.base_dir and args.base_models and args.cand_dir and args.cand_models):
-        ap.error("B·C·B12에는 --base-dir·--base-models·--cand-dir·--cand-models가 필요합니다.")
+        ap.error("B·C·B12·COORD에는 --base-dir·--base-models·--cand-dir·--cand-models가 필요합니다.")
+    if args.rule == "COORD":
+        if not (args.ref_dir and args.ref_models):
+            ap.error("COORD에는 --ref-dir·--ref-models가 필요합니다.")
+        result = decide_coord(args)
+        Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=1))
+        print(json.dumps(result, ensure_ascii=False, indent=1))
+        print(f"판정(COORD): {'기준을 모두 만족' if result['adopted'] else '기준을 만족하지 못함'}; 원인 확인: "
+              f"{result['mechanism']['reading']} → {args.out}")
+        return
     if args.rule == "B12":
         result = decide_b12(args)
         Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=1))
