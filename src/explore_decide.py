@@ -19,6 +19,8 @@ DQN은 모델 파일 지문으로 골라 seed 5개를 묶는다. 계산은 표�
 - PRED1·PRED12(예측 제어, 98절): 고르지 않고 비교만 한다. 두 정책 X·Y에서 X의 지연이 문턱(단독 1.3초, 12개 지도 2.2초) 이상 짧고
   300초 초과·좌회전 두 곳이 늘지 않으면 'X가 낫다', 문턱 이상 길면 'X가 못하다', 그 밖은 '차이 없음'. 98.4의 해석 1~6을 그대로 붙인다.
   PRED1은 단독 모형(검증 2일 무작위가 주, 무리 도착은 민감도, 학습 13일은 학습 없는 정책만), PRED12는 12개 지도 검증 46조각 × 5번.
+- TEACH1·TEACH12(선생님 DQN, 103절): 질문 1 선생님 DQN 대 같은 설정 DQN(H1·B12, 주 판정), 2 대 단순 제어, 3 대 선생님 P0
+  (선생님을 넘었다·선생님 수준·선생님에 못 미친다), 4 대 흉내만 낸 DQN. 말과 문턱은 PRED와 같다. 확인용 시범 일치율을 함께 적는다.
 
 사용:
   python src/explore_decide.py B --base-dir <v6_check/평가 지문> --base-models <v6 pet1 seed 5개> \
@@ -32,6 +34,10 @@ DQN은 모델 파일 지문으로 골라 seed 5개를 묶는다. 계산은 표�
   python src/explore_decide.py PRED12 --pred-dir <explore_pred/network12/평가 지문> --ref-dir <eval_12map/평가 지문> --ref-models <75절 5개> \
       --base-dir <explore_12map/평가 지문> --base-models <B12 5개> --cand-dir <explore_12map_coord/평가 지문> --cand-models <COORD 5개> \
       --out <decision_PRED12.json>
+  python src/explore_decide.py TEACH1 --teach-dir <explore_teacher/single/eval/평가 지문> --teach-models <선생님 DQN 5개> \
+      --imitation-models <흉내만 낸 DQN 5개> --h1-dir … --h1-models … --v6-dir … --pred-dir <explore_pred/single/평가 지문> --out …
+  python src/explore_decide.py TEACH12 --teach-dir <explore_teacher/network12/평가 지문> --teach-models … --imitation-models … \
+      --base-dir <explore_12map/평가 지문> --base-models <B12 5개> --ref-dir <eval_12map/평가 지문> --pred-dir <explore_pred/network12/평가 지문> --out …
 """
 from __future__ import annotations
 
@@ -315,6 +321,95 @@ def decide_pred_12(args) -> dict:
     out["safety_note"] = "석천사거리 안 충돌 없음" if not unsafe else f"석천사거리 안 충돌 있음 → 한계로 적고 재현으로 원인 확인: {unsafe}"
     return out
 
+
+# ------------------------------------------------------------------ 선생님 DQN(103절)
+Q1 = {"낫다": "1. 선생님이 DQN을 개선했다.", "차이 없음": "1. 선생님의 효과가 보이지 않는다.", "못하다": "1. 선생님이 오히려 해가 됐다."}
+Q2 = {"낫다": "2. DQN이 단순 규칙을 넘었다.", "차이 없음": "2. 단순 규칙과 차이 없음.", "못하다": "2. 단순 규칙보다 못하다."}
+Q4 = {"낫다": "4. 강화학습 단계가 더했다.", "차이 없음": "4. 흉내 내기가 대부분이다.", "못하다": "4. 강화학습이 흉내 낸 것을 망쳤다."}
+
+
+def versus_teacher(x: dict, p0: dict, threshold: float, delay: str, long: str) -> dict:
+    """103.2 질문 3: 문턱 이상 짧고 나머지가 늘지 않음 → 넘었다 / 지연 차이가 문턱 안 → 수준 / 문턱 이상 긺 → 못 미친다."""
+    v = verdict(x, p0, threshold, delay, long)
+    d = v["delay_diff_s"]
+    v["teacher_word"] = ("선생님을 넘었다" if v["word"] == "낫다" else "선생님에 못 미친다" if d >= threshold else
+                         "선생님 수준" if abs(d) < threshold else "지연은 문턱 이상 짧지만 다른 지표가 늘어 넘었다고 말할 수 없다")
+    return v
+
+
+def teach_interpret(c: dict) -> list[str]:
+    return [Q1[c["1_vs_same_dqn"]["word"]], Q2[c["2_vs_greedy"]["word"]], f"3. {c['3_vs_teacher']['teacher_word']}.",
+            Q4[c["4_vs_imitation"]["word"]]]
+
+
+def agreement_of(models: list[str]) -> list[dict]:
+    out = []
+    for m in models:
+        rec = json.loads((Path(m) / "teacher.json").read_text())
+        if rec.get("stage") != "teacher":
+            raise SystemExit(f"{m}: 선생님 DQN이 아니다.")
+        out.append({"model": Path(m).name, **rec.get("imitation", {}).get("holdout", {})})
+    return out
+
+
+def _check_imitation(models: list[str], teach_models: list[str]) -> None:
+    for m, t in zip(models, teach_models):
+        cfg = json.loads((Path(m) / "training_config.json").read_text())
+        if cfg.get("stage") != "imitation_only" or Path(m).parent != Path(t):
+            raise SystemExit(f"{m}: {t}의 '흉내만 낸 DQN'이 아니다.")
+
+
+def decide_teach_single(args) -> dict:
+    teach, v6, h1, pred = Path(args.teach_dir), Path(args.v6_dir), Path(args.h1_dir), Path(args.pred_dir)
+    _check_imitation(args.imitation_models, args.teach_models)
+    out = {"rule": "TEACH1", "threshold_s": DELAY_S, "agreement": agreement_of(args.teach_models)}
+    for name, arrivals in (("validation_random", "random"), ("validation_platoon", "platoon")):
+        g = {"teacher_dqn": _dqn_rows(teach, VALIDATION, args.teach_models, arrivals),
+             "imitation_dqn": _dqn_rows(teach, VALIDATION, args.imitation_models, arrivals),
+             "dqn_h1": _dqn_rows(h1 if arrivals == "random" else pred, VALIDATION, args.h1_models, arrivals),
+             "greedy": _single_rows(v6, VALIDATION, "greedy", arrivals), "fixedc": _single_rows(v6, VALIDATION, "fixedc", arrivals),
+             "P0": _single_rows(pred, VALIDATION, PRED_TAGS["p0"], arrivals)}
+        s = {k: summary(v) for k, v in g.items()}
+        sv = lambda a, b: verdict(s[a], s[b], DELAY_S, "mean_delay_s", "long_waits")
+        c = {"1_vs_same_dqn": sv("teacher_dqn", "dqn_h1"), "2_vs_greedy": sv("teacher_dqn", "greedy"),
+             "3_vs_teacher": versus_teacher(s["teacher_dqn"], s["P0"], DELAY_S, "mean_delay_s", "long_waits"),
+             "4_vs_imitation": sv("teacher_dqn", "imitation_dqn"),
+             "extra_imitation_vs_h1": sv("imitation_dqn", "dqn_h1"), "extra_imitation_vs_greedy": sv("imitation_dqn", "greedy"),
+             "vs_fixedc": {k: versus_fixedc(s[k], s["fixedc"], "mean_delay_s") for k in ("teacher_dqn", "imitation_dqn")}}
+        out[name] = {"summary": s, "comparisons": c, "safety": {k: pet_counts(g[k]) for k in ("teacher_dqn", "imitation_dqn")}}
+    out["interpretation"] = teach_interpret(out["validation_random"]["comparisons"])
+    unsafe = [f"{n}:{k}" for n in ("validation_random", "validation_platoon") for k, v in out[n]["safety"].items() if v["pet_below_0"] > 0]
+    out["safety_note"] = "PET < 0 없음" if not unsafe else f"PET < 0 있음 → 한계로 적고 재현으로 원인 확인: {unsafe}"
+    return out
+
+
+def decide_teach_12(args) -> dict:
+    teach, ref, pred = Path(args.teach_dir), Path(args.ref_dir), Path(args.pred_dir)
+    _check_imitation(args.imitation_models, args.teach_models)
+    g = {"teacher_dqn": windows12(teach, dqn_tag(args.teach_models)), "imitation_dqn": windows12(teach, dqn_tag(args.imitation_models)),
+         "dqn_b12": windows12(Path(args.base_dir), dqn_tag(args.base_models)), "greedy": windows12(ref, lambda s: "greedy"),
+         "fixedc": windows12(ref, lambda s: "fixedc"), "P0": windows12(pred, lambda s: PRED_TAGS["p0"])}
+    s = {k: summary12(v) for k, v in g.items()}
+    sv = lambda a, b: verdict(s[a], s[b], DELAY_12_S, "delay", "long")
+    c = {"1_vs_same_dqn": sv("teacher_dqn", "dqn_b12"), "2_vs_greedy": sv("teacher_dqn", "greedy"),
+         "3_vs_teacher": versus_teacher(s["teacher_dqn"], s["P0"], DELAY_12_S, "delay", "long"),
+         "4_vs_imitation": sv("teacher_dqn", "imitation_dqn"),
+         "extra_imitation_vs_b12": sv("imitation_dqn", "dqn_b12"), "extra_imitation_vs_greedy": sv("imitation_dqn", "greedy")}
+    out = {"rule": "TEACH12", "threshold_s": DELAY_12_S, "dates": VALIDATION, "agreement": agreement_of(args.teach_models),
+           "all_windows": s, "without_" + UNSTABLE_12: {k: summary12(v, UNSTABLE_12) for k, v in g.items()}, "comparisons": c,
+           "vs_fixedc": {k: versus_fixedc(s[k], s["fixedc"], "delay") for k in ("teacher_dqn", "imitation_dqn")}}
+    out["interpretation"] = teach_interpret(c)
+    safety = {}
+    for k, models in (("teacher_dqn", args.teach_models), ("imitation_dqn", args.imitation_models)):
+        tag = dqn_tag(models)
+        runs = [_read(w / f"{tag(sd)}_eval{sd}" / "metrics.json") for w in sorted((teach / "windows").iterdir())
+                if w.name[:8] in VALIDATION for sd in SEEDS]
+        safety[k] = {"collisions_in_204820": sum(r["collisions_in_204820"] for r in runs)}
+    out["safety"] = safety
+    unsafe = [k for k, v in safety.items() if v["collisions_in_204820"] > 0]
+    out["safety_note"] = "석천사거리 안 충돌 없음" if not unsafe else f"석천사거리 안 충돌 있음 → 한계로 적고 재현으로 원인 확인: {unsafe}"
+    return out
+
 def decide_b12(args) -> dict:
     base = windows12(Path(args.base_dir), dqn_tag(args.base_models))
     cand = windows12(Path(args.cand_dir), dqn_tag(args.cand_models))
@@ -404,7 +499,7 @@ def ablation(args) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("rule", choices=("B", "C", "B12", "ABL", "COORD", "PRED1", "PRED12"))
+    ap.add_argument("rule", choices=("B", "C", "B12", "ABL", "COORD", "PRED1", "PRED12", "TEACH1", "TEACH12"))
     ap.add_argument("--base-dir")
     ap.add_argument("--base-models", nargs=5)
     ap.add_argument("--cand-dir")
@@ -419,12 +514,25 @@ def main() -> None:
     ap.add_argument("--v6-models", nargs=5, help="PRED1: v6 pet1 DQN seed 5개")
     ap.add_argument("--h1-dir", help="PRED1: H1 무작위 도착 결과(explore_single/eval/평가 지문)")
     ap.add_argument("--h1-models", nargs=5, help="PRED1: H1(n = 10 + Double) seed 5개")
+    ap.add_argument("--teach-dir", help="TEACH1·TEACH12: 선생님 DQN 평가 결과(explore_teacher/…/평가 지문)")
+    ap.add_argument("--teach-models", nargs=5, help="TEACH: 선생님 DQN seed 5개")
+    ap.add_argument("--imitation-models", nargs=5, help="TEACH: 흉내만 낸 DQN seed 5개(선생님 DQN 폴더의 imitation)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     if args.rule == "ABL":
         result = ablation(args)
         Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=1))
         print(json.dumps(result, ensure_ascii=False, indent=1))
+        return
+    if args.rule in ("TEACH1", "TEACH12"):
+        need = (["teach_dir", "teach_models", "imitation_models", "h1_dir", "h1_models", "v6_dir", "pred_dir"] if args.rule == "TEACH1"
+                else ["teach_dir", "teach_models", "imitation_models", "base_dir", "base_models", "ref_dir", "pred_dir"])
+        missing = [n for n in need if not getattr(args, n)]
+        if missing:
+            ap.error(f"{args.rule}에 필요한 인자: {missing}")
+        result = (decide_teach_single if args.rule == "TEACH1" else decide_teach_12)(args)
+        Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=1))
+        print(json.dumps({k: result[k] for k in ("interpretation", "safety_note", "agreement")}, ensure_ascii=False, indent=1))
         return
     if args.rule == "PRED1":
         if not (args.pred_dir and args.v6_dir and args.v6_models and args.h1_dir and args.h1_models):
