@@ -1,0 +1,213 @@
+{
+  "experiment": "WEIGHT_FIXED24_V1",
+  "description": "24개 학습 날짜·시간대에서 P0와 고정 가중치를 비교하고 후보를 미리 정한 규칙으로 선택한 뒤, 이전에 사용한 64조건에서 추가 개발 비교한다. 학습 없음.",
+  "environment": {
+    "fingerprint": "b20888514ea3",
+    "p0_code": "9440fe1d3869",
+    "rule_set": "pet1",
+    "north_extension_m": 240
+  },
+  "conditions": [
+    {
+      "date": "20220812",
+      "period": "0730",
+      "seed": 42
+    },
+    {
+      "date": "20220812",
+      "period": "1730",
+      "seed": 43
+    },
+    {
+      "date": "20220812",
+      "period": "1230",
+      "seed": 44
+    },
+    {
+      "date": "20220812",
+      "period": "2130",
+      "seed": 45
+    },
+    {
+      "date": "20220814",
+      "period": "1230",
+      "seed": 42
+    },
+    {
+      "date": "20220814",
+      "period": "2130",
+      "seed": 43
+    },
+    {
+      "date": "20220819",
+      "period": "0730",
+      "seed": 44
+    },
+    {
+      "date": "20220819",
+      "period": "1730",
+      "seed": 45
+    },
+    {
+      "date": "20220820",
+      "period": "1230",
+      "seed": 42
+    },
+    {
+      "date": "20220820",
+      "period": "2130",
+      "seed": 43
+    },
+    {
+      "date": "20220822",
+      "period": "0730",
+      "seed": 44
+    },
+    {
+      "date": "20220822",
+      "period": "1730",
+      "seed": 45
+    },
+    {
+      "date": "20220906",
+      "period": "1230",
+      "seed": 42
+    },
+    {
+      "date": "20220906",
+      "period": "2130",
+      "seed": 43
+    },
+    {
+      "date": "20220907",
+      "period": "0730",
+      "seed": 44
+    },
+    {
+      "date": "20220907",
+      "period": "1730",
+      "seed": 45
+    },
+    {
+      "date": "20220909",
+      "period": "1230",
+      "seed": 42
+    },
+    {
+      "date": "20220909",
+      "period": "2130",
+      "seed": 43
+    },
+    {
+      "date": "20220911",
+      "period": "0730",
+      "seed": 44
+    },
+    {
+      "date": "20220911",
+      "period": "1730",
+      "seed": 45
+    },
+    {
+      "date": "20220926",
+      "period": "1230",
+      "seed": 42
+    },
+    {
+      "date": "20220926",
+      "period": "2130",
+      "seed": 43
+    },
+    {
+      "date": "20221030",
+      "period": "0730",
+      "seed": 44
+    },
+    {
+      "date": "20221030",
+      "period": "1730",
+      "seed": 45
+    }
+  ],
+  "policies": [
+    {
+      "tag": "P0",
+      "mode": null,
+      "factors": null
+    },
+    {
+      "tag": "M4",
+      "mode": 4,
+      "factors": null
+    },
+    {
+      "tag": "W4",
+      "mode": null,
+      "factors": [
+        4,
+        4
+      ]
+    },
+    {
+      "tag": "W6",
+      "mode": null,
+      "factors": [
+        6,
+        6
+      ]
+    },
+    {
+      "tag": "W8",
+      "mode": null,
+      "factors": [
+        8,
+        8
+      ]
+    }
+  ],
+  "selection": "24상황의 전체 차량당 평균 지연이 가장 낮은 정책; 동률이면 P0,M4,W4,W6,W8 순; 심각한 실행 품질 오류나 짝 불일치가 있으면 자동 선택하지 않음. 선택은 24상황 외의 결과를 사용하지 않음.",
+  "exploratory_bootstrap": {
+    "unit": "date",
+    "repetitions": 10000,
+    "seed": 20261027,
+    "note": "11일을 재표집하는 탐색적 95% 구간. 날짜 선택과 후보 선택의 편향을 없애지 못하며, 검출력이나 최종 통과를 보장하지 않는다."
+  },
+  "confirmation": {
+    "dates": [
+      "20220928",
+      "20220813"
+    ],
+    "periods": [
+      "0730",
+      "1230",
+      "1730",
+      "2130"
+    ],
+    "seeds": [
+      1042,
+      1043,
+      1044,
+      1045,
+      1046,
+      1047,
+      1048,
+      1049
+    ],
+    "references": [
+      "P0",
+      "M4",
+      "RL42",
+      "RL43",
+      "RL44"
+    ]
+  },
+  "budget": {
+    "total_s": 345600,
+    "stop_margin_s": 300,
+    "job_reserve_s": 600,
+    "job_timeout_s": 570,
+    "wall_hours": 12,
+    "estimated_job_s": 164.8
+  },
+  "interpretation": "24상황은 RL 학습 날짜의 개발 선택이며 64회 비교도 이전에 사용한 날짜의 추가 개발 비교. 상황별 사후 최적은 RL 성능의 상한 아님. 0.5초 효과 검출 보장 없음."
+}

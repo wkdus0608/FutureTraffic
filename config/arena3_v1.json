@@ -1,0 +1,2097 @@
+{
+  "experiment": "ARENA3_V1",
+  "design": "docs/ARENA3_설계_20261027.md, PROJECT_PROGRESS.md 208절",
+  "environment": {
+    "fingerprint": "b20888514ea3",
+    "rule_set": "pet1",
+    "north_extension_m": 240,
+    "p0_code": "9440fe1d3869"
+  },
+  "dates": {
+    "salt": "ARENA3_SPLIT_20261027",
+    "eval": [
+      "20220811",
+      "20220819",
+      "20220823",
+      "20220906",
+      "20220813",
+      "20220820",
+      "20220911"
+    ],
+    "train": [
+      "20220812",
+      "20220822",
+      "20220907",
+      "20220926",
+      "20220928",
+      "20220814",
+      "20221030",
+      "20220909"
+    ],
+    "not_used": {
+      "test": [
+        "20220810",
+        "20221028",
+        "20220821",
+        "20220910"
+      ],
+      "note": "시험 4일·새 12일은 이미 사용해 쓰지 않음"
+    }
+  },
+  "modes": [
+    [
+      1.0,
+      1.0
+    ],
+    [
+      1.5,
+      1.0
+    ],
+    [
+      1.0,
+      1.5
+    ],
+    [
+      1.5,
+      1.5
+    ],
+    [
+      2.0,
+      2.0
+    ],
+    [
+      4.0,
+      4.0
+    ]
+  ],
+  "m4_mode": 4,
+  "w4_mode": 5,
+  "observation": {
+    "size": 119,
+    "base": [
+      0,
+      110
+    ],
+    "w4_onehot": [
+      110,
+      114
+    ],
+    "w4_mask": 114,
+    "m4_gaps": [
+      115,
+      119
+    ],
+    "m4_gap_scale": 1000.0,
+    "m4_gap_clip": 10.0
+  },
+  "evaluation": {
+    "periods": [
+      "0730",
+      "1000",
+      "1230",
+      "1500",
+      "1730",
+      "2100"
+    ],
+    "placements": [
+      "E1",
+      "E2"
+    ],
+    "confirmation_placements": [
+      "C1",
+      "C2"
+    ],
+    "episode": {
+      "warmup_s": 1800,
+      "control_s": 3600,
+      "tail_s": 900,
+      "step_s": 5,
+      "tail_policy": "P0"
+    },
+    "baselines": [
+      "P0",
+      "M4",
+      "W4"
+    ],
+    "reference": "M4",
+    "sensitivity_reference": "P0"
+  },
+  "judge": {
+    "min_gain_s": 0.3,
+    "date_t_df": 6,
+    "t975": 2.446911851144969,
+    "min_positive_dates": 5,
+    "left_tolerance_s": 5.0,
+    "long_wait_rule": "300초 초과 차량 수가 M4 이하",
+    "collision_rule": "정책 고유 미확인 충돌 0; M4·P0와 같은 사건은 정책 무관 후보로 따로 적고 재현 진단 전 통과 보류",
+    "learner_models": 3,
+    "learner_aggregate": "상황마다 모델 3개의 총지연 평균",
+    "winner": "통과한 학습기 중 주 지표 최대 → 확인 배치 C1·C2 84상황에서 같은 조건 재통과",
+    "gate1_bprime_min_gain_s": 0.3
+  },
+  "reproduction": {
+    "note": "원래 배치(배치 이름 없음)에서 이전 실행과 소수점까지 같아야 한다",
+    "cases": [
+      {
+        "date": "20220812",
+        "period": "0730",
+        "sumo_seed": 42,
+        "policy": "P0",
+        "source": "explore_fixed24_v1/runs/sweep/P0_20220812_0730_s42",
+        "mean_delay_s": 36.57310599606815,
+        "actual_total_delay": 223242.239,
+        "executed_sha16": "a2872723dc24cf0c",
+        "route_sha256": "796f57316662f847950e5289580706a34ccd054a4385592cc80b0a4e4a9d742d"
+      },
+      {
+        "date": "20220812",
+        "period": "0730",
+        "sumo_seed": 42,
+        "policy": "M4",
+        "source": "explore_fixed24_v1/runs/sweep/M4_20220812_0730_s42",
+        "mean_delay_s": 34.644466087811274,
+        "actual_total_delay": 211469.821,
+        "executed_sha16": "58e89cf18dac75c0",
+        "route_sha256": "796f57316662f847950e5289580706a34ccd054a4385592cc80b0a4e4a9d742d"
+      },
+      {
+        "date": "20220812",
+        "period": "0730",
+        "sumo_seed": 42,
+        "policy": "W4",
+        "source": "explore_fixed24_v1/runs/sweep/W4_20220812_0730_s42",
+        "mean_delay_s": 35.64195543905636,
+        "actual_total_delay": 217558.496,
+        "executed_sha16": "04e378ba7fee628b",
+        "route_sha256": "796f57316662f847950e5289580706a34ccd054a4385592cc80b0a4e4a9d742d"
+      }
+    ]
+  },
+  "bprime": {
+    "horizon_s": 300,
+    "terminal_s": 75.0,
+    "futures": 8,
+    "history_s": 900,
+    "continuation": "M4",
+    "rule": "M4가 아닌 후보 a의 짝 이득 평균 g>0이고 g ≥ 1.0×표준오차이면 a(여럿이면 g 최대), 아니면 M4",
+    "se_multiplier": 1.0,
+    "future_seed": "seed32(BPRIME_FUTURE, 상태 이름, 번호)",
+    "restore_check": {
+      "tolerance": 1e-06,
+      "max_mismatch_rate": 0.05,
+      "min_points": 40
+    },
+    "keep_state_fraction": 0.1,
+    "data_per_date": 8
+  },
+  "g1": {
+    "seeds": [
+      42,
+      43,
+      44
+    ],
+    "network": [
+      64,
+      64
+    ],
+    "dueling_anchor": "M4",
+    "gamma_per_5s": 0.99,
+    "n_choice_steps": 3,
+    "learning_rate": 0.001,
+    "batch_size": 64,
+    "replay_size": 50000,
+    "learning_starts": 500,
+    "updates_per_transition": 8,
+    "target_every_updates": 1250,
+    "epsilon_start": 0.5,
+    "epsilon_end": 0.1,
+    "epsilon_decay_choices": 3000,
+    "reward_scale": 1000.0,
+    "cpu_hours_per_seed": 20.0,
+    "parallel_episodes": 2,
+    "max_discarded": 5,
+    "milestone_control_steps": [
+      200000,
+      400000
+    ],
+    "train_slots": [
+      "0600",
+      "2145"
+    ]
+  },
+  "budget": {
+    "learner_cpu_hours": 60.0,
+    "accounting": "시뮬레이션·롤아웃·경사 갱신·저장 포함, 심판 평가 제외",
+    "compute_limit": "해제(207절); 학습기 사이 공정성용 예산만 둔다"
+  },
+  "drive_folders": {
+    "lock": "arena3/lock",
+    "baseline": "arena3/referee/baseline",
+    "bprime_eval": "arena3/referee/bprime",
+    "g1_eval": "arena3/referee/G1",
+    "bprime_data": "arena3/bprime_data",
+    "g1_train": "arena3/G1_train"
+  },
+  "situations_eval": [
+    {
+      "date": "20220811",
+      "period": "0730",
+      "tag": "E1",
+      "sumo_seed": 116236534,
+      "arrival_seed_example": 1015756893,
+      "route_sha256": "b62fafc16192739f3da6c9830d644ca8e3453086b188bc4682a738f8447ecb59"
+    },
+    {
+      "date": "20220811",
+      "period": "0730",
+      "tag": "E2",
+      "sumo_seed": 115390782,
+      "arrival_seed_example": 191761020,
+      "route_sha256": "fea05b962302859e5ceffda9671021dbd35764fd9ea836ccd83dd70610b027c5"
+    },
+    {
+      "date": "20220811",
+      "period": "1000",
+      "tag": "E1",
+      "sumo_seed": 1910474372,
+      "arrival_seed_example": 2057410530,
+      "route_sha256": "44afa7a5a4341989f5880d391c1423432c20348f4dd8dc8b8e90656cd3536a5b"
+    },
+    {
+      "date": "20220811",
+      "period": "1000",
+      "tag": "E2",
+      "sumo_seed": 1553699500,
+      "arrival_seed_example": 874575607,
+      "route_sha256": "94d04f15d5a4232dcf07cb78db3bad33d6661f435b4783e80ed61c5984e757f8"
+    },
+    {
+      "date": "20220811",
+      "period": "1230",
+      "tag": "E1",
+      "sumo_seed": 422644998,
+      "arrival_seed_example": 1180988736,
+      "route_sha256": "7119bb4374147f468d11f579a60a00fb3f13220722e3995c5a56da92571621f4"
+    },
+    {
+      "date": "20220811",
+      "period": "1230",
+      "tag": "E2",
+      "sumo_seed": 2134344307,
+      "arrival_seed_example": 1161449767,
+      "route_sha256": "2e46a9b4aea770c3eb57cbd4d63774727edb72523e26ba5564410f8ec2e2cf9f"
+    },
+    {
+      "date": "20220811",
+      "period": "1500",
+      "tag": "E1",
+      "sumo_seed": 705378336,
+      "arrival_seed_example": 663391751,
+      "route_sha256": "0c2c0351cda652a9515b6897819ad61c9cde5077194cf4e80e590ddb8e127eb0"
+    },
+    {
+      "date": "20220811",
+      "period": "1500",
+      "tag": "E2",
+      "sumo_seed": 280685831,
+      "arrival_seed_example": 560590483,
+      "route_sha256": "bcd87fe2f46e1fb1b4251969fc62a609660852ab40833f48f8053eb89cb1682c"
+    },
+    {
+      "date": "20220811",
+      "period": "1730",
+      "tag": "E1",
+      "sumo_seed": 529483693,
+      "arrival_seed_example": 645800877,
+      "route_sha256": "530e3ed33d973e6a678d565b350e5bcb405ce27710442b8e5329dc81b4b12ec0"
+    },
+    {
+      "date": "20220811",
+      "period": "1730",
+      "tag": "E2",
+      "sumo_seed": 1177726795,
+      "arrival_seed_example": 1905072931,
+      "route_sha256": "c7ae15fb2f9db7fc561bdedc75df60ebd7732fdcec3fb215a94e480f7b0fec91"
+    },
+    {
+      "date": "20220811",
+      "period": "2100",
+      "tag": "E1",
+      "sumo_seed": 537663832,
+      "arrival_seed_example": 55165487,
+      "route_sha256": "9edd2e1b8cd50062b83cb1bb7a5d679659e4c77d35f6b0fede99f9f160895dbd"
+    },
+    {
+      "date": "20220811",
+      "period": "2100",
+      "tag": "E2",
+      "sumo_seed": 1426935128,
+      "arrival_seed_example": 509381946,
+      "route_sha256": "57ea7348c10aa57ead3eb5a1529501b325661a11f816069cb7f3d271b3a29c67"
+    },
+    {
+      "date": "20220819",
+      "period": "0730",
+      "tag": "E1",
+      "sumo_seed": 2119723155,
+      "arrival_seed_example": 1084378375,
+      "route_sha256": "bf7db513b15513ad83ef715d3ea40c397b3db271507580e67bdb2bc1d4bf5b38"
+    },
+    {
+      "date": "20220819",
+      "period": "0730",
+      "tag": "E2",
+      "sumo_seed": 801128317,
+      "arrival_seed_example": 1100712708,
+      "route_sha256": "0d415813cd87764c5a2841852064597163ba2495c3bbe981b69521459fe34e3f"
+    },
+    {
+      "date": "20220819",
+      "period": "1000",
+      "tag": "E1",
+      "sumo_seed": 1361495296,
+      "arrival_seed_example": 1995128135,
+      "route_sha256": "29648a50634bb0529efda49df5eb33ff34b07d4ae5233b932548d37293d5f589"
+    },
+    {
+      "date": "20220819",
+      "period": "1000",
+      "tag": "E2",
+      "sumo_seed": 443432854,
+      "arrival_seed_example": 1322206524,
+      "route_sha256": "196b3680d62b3c86de30b9b922eb1402f379302e90ef328e62a5980b867315f6"
+    },
+    {
+      "date": "20220819",
+      "period": "1230",
+      "tag": "E1",
+      "sumo_seed": 442378221,
+      "arrival_seed_example": 1591901996,
+      "route_sha256": "4267e81a4fcbb46a67ecec8654184851d53dc12f1116a95ea49a34f78bcc2b67"
+    },
+    {
+      "date": "20220819",
+      "period": "1230",
+      "tag": "E2",
+      "sumo_seed": 304782,
+      "arrival_seed_example": 1734349906,
+      "route_sha256": "a5ceb83e04f5f84c5ce75f6507d930e994672c7310a71de920a44355bc7b16ed"
+    },
+    {
+      "date": "20220819",
+      "period": "1500",
+      "tag": "E1",
+      "sumo_seed": 890880563,
+      "arrival_seed_example": 1032002538,
+      "route_sha256": "5a678524c48d89cd812c0025e929505b5c038a01ab9cc42b41e35a2ec3ac0773"
+    },
+    {
+      "date": "20220819",
+      "period": "1500",
+      "tag": "E2",
+      "sumo_seed": 1840565119,
+      "arrival_seed_example": 572071094,
+      "route_sha256": "09251a62541fc31d2ea3e0ff08cba8712e9063065a0a9d2d3e372a1f103c720a"
+    },
+    {
+      "date": "20220819",
+      "period": "1730",
+      "tag": "E1",
+      "sumo_seed": 734865716,
+      "arrival_seed_example": 1748730644,
+      "route_sha256": "d5ef70215d9b39c598f5c927d60e3e3282585e25973aa5fcd1e296fa07928435"
+    },
+    {
+      "date": "20220819",
+      "period": "1730",
+      "tag": "E2",
+      "sumo_seed": 928059179,
+      "arrival_seed_example": 144596850,
+      "route_sha256": "97ce504f37bafb0d1690935a30e64cbe7b2bb56e72f403e31f1fd93da171ce64"
+    },
+    {
+      "date": "20220819",
+      "period": "2100",
+      "tag": "E1",
+      "sumo_seed": 1791386374,
+      "arrival_seed_example": 150199512,
+      "route_sha256": "1eff8b68206fc6fac80d59f4ab1fe66377b59d47aa9f6788dedcb4fe8bde0d09"
+    },
+    {
+      "date": "20220819",
+      "period": "2100",
+      "tag": "E2",
+      "sumo_seed": 1094380176,
+      "arrival_seed_example": 732228763,
+      "route_sha256": "312d87f0aa88e7f47fbdae12d5254bc63ef0c7710679e6f81485920dbb634f10"
+    },
+    {
+      "date": "20220823",
+      "period": "0730",
+      "tag": "E1",
+      "sumo_seed": 1236816282,
+      "arrival_seed_example": 740647798,
+      "route_sha256": "d606a68b111f82e02d9ed1b390a02b4aac551992c857bae752a2af124e6e65d7"
+    },
+    {
+      "date": "20220823",
+      "period": "0730",
+      "tag": "E2",
+      "sumo_seed": 764368909,
+      "arrival_seed_example": 1595491415,
+      "route_sha256": "e10dea3fe5610a195e6708f3fe4b832a0b53b40b6c4d844a4cf64145cbfc6a7c"
+    },
+    {
+      "date": "20220823",
+      "period": "1000",
+      "tag": "E1",
+      "sumo_seed": 2084493832,
+      "arrival_seed_example": 1713019974,
+      "route_sha256": "c1693783cf95a3066da82e2eb7bf6513b8750353031279e7e27f107d8d4e1513"
+    },
+    {
+      "date": "20220823",
+      "period": "1000",
+      "tag": "E2",
+      "sumo_seed": 1889544953,
+      "arrival_seed_example": 672090524,
+      "route_sha256": "b263465610796da63e65143924c04142f8b2558f46f17542c023012209f74571"
+    },
+    {
+      "date": "20220823",
+      "period": "1230",
+      "tag": "E1",
+      "sumo_seed": 1262653459,
+      "arrival_seed_example": 1736979798,
+      "route_sha256": "51e94af8dcf4b80be6de4ecb4b949391246664c7b69945dd13ed583edc3d6950"
+    },
+    {
+      "date": "20220823",
+      "period": "1230",
+      "tag": "E2",
+      "sumo_seed": 966696726,
+      "arrival_seed_example": 2007149588,
+      "route_sha256": "9fee85fdb278b2402516b5ae6a83b0350140c6695be6492fc67e904bf9047207"
+    },
+    {
+      "date": "20220823",
+      "period": "1500",
+      "tag": "E1",
+      "sumo_seed": 1732551757,
+      "arrival_seed_example": 1058697352,
+      "route_sha256": "5e13fc3382a34c16c9a53d73f89c1974059bb98e92defc7e4d026e70a9246543"
+    },
+    {
+      "date": "20220823",
+      "period": "1500",
+      "tag": "E2",
+      "sumo_seed": 1916233760,
+      "arrival_seed_example": 882511273,
+      "route_sha256": "042aea36125bbf68088102eb8703ebad9c060b3c753d09104123ba3f99b05add"
+    },
+    {
+      "date": "20220823",
+      "period": "1730",
+      "tag": "E1",
+      "sumo_seed": 1454087027,
+      "arrival_seed_example": 1488254273,
+      "route_sha256": "f5e7c0c3ec339f940d75933314d662eacd4e806b51644ee3a564e354e8c631e9"
+    },
+    {
+      "date": "20220823",
+      "period": "1730",
+      "tag": "E2",
+      "sumo_seed": 1070306160,
+      "arrival_seed_example": 1799849088,
+      "route_sha256": "1fca2235572dc06dc871edff0ff2aedc8bb5d86944de6bb8f026db7387e9ffd2"
+    },
+    {
+      "date": "20220823",
+      "period": "2100",
+      "tag": "E1",
+      "sumo_seed": 666833526,
+      "arrival_seed_example": 80933918,
+      "route_sha256": "d6060d42f744125a19f7218031e1459c11394a4b670f4ebc38a56d7c9d466c8a"
+    },
+    {
+      "date": "20220823",
+      "period": "2100",
+      "tag": "E2",
+      "sumo_seed": 445557336,
+      "arrival_seed_example": 1446353460,
+      "route_sha256": "217e2ae5ebf5ad33cbe7507df413e69042b7295a291ff113351cd4a9d6ea455b"
+    },
+    {
+      "date": "20220906",
+      "period": "0730",
+      "tag": "E1",
+      "sumo_seed": 1670073804,
+      "arrival_seed_example": 1034066772,
+      "route_sha256": "5ae1c16898ce57e44d67966786a7e25ff69ad1307ffe30fe77966278c283b8ff"
+    },
+    {
+      "date": "20220906",
+      "period": "0730",
+      "tag": "E2",
+      "sumo_seed": 1711407112,
+      "arrival_seed_example": 628698821,
+      "route_sha256": "7e7a3a52915e314da1f6ce94462bb91cf811b4fb75d81143030533b1b17acf6c"
+    },
+    {
+      "date": "20220906",
+      "period": "1000",
+      "tag": "E1",
+      "sumo_seed": 471906502,
+      "arrival_seed_example": 1878485740,
+      "route_sha256": "805bab5e5a00aa528f7280998b01ab8cd8377136535a08da9d559c1ead043528"
+    },
+    {
+      "date": "20220906",
+      "period": "1000",
+      "tag": "E2",
+      "sumo_seed": 1490317358,
+      "arrival_seed_example": 942164606,
+      "route_sha256": "fa23762e26e7e95f4a262d7390fca0f948d74822a54de86da883d66aa83e18f8"
+    },
+    {
+      "date": "20220906",
+      "period": "1230",
+      "tag": "E1",
+      "sumo_seed": 454707959,
+      "arrival_seed_example": 1077442594,
+      "route_sha256": "1766c1cd884b35994810b808f71d0c2834f23b0329e7fea4c8df8204640a47dd"
+    },
+    {
+      "date": "20220906",
+      "period": "1230",
+      "tag": "E2",
+      "sumo_seed": 376616031,
+      "arrival_seed_example": 1078885269,
+      "route_sha256": "91bc616b6d597718fe74bae8ad2d22fc17f0a324330fd339e9d33fe4f781f230"
+    },
+    {
+      "date": "20220906",
+      "period": "1500",
+      "tag": "E1",
+      "sumo_seed": 477519665,
+      "arrival_seed_example": 2112470964,
+      "route_sha256": "68fc7c2349fde6f032715158bf50685ff9dc72d98fcb825b627537a34f728d75"
+    },
+    {
+      "date": "20220906",
+      "period": "1500",
+      "tag": "E2",
+      "sumo_seed": 1081194222,
+      "arrival_seed_example": 1587627919,
+      "route_sha256": "855c91a64a7262937de158237afa9d1d9b3b4efd22f0ec5949d7c222d0fb0c20"
+    },
+    {
+      "date": "20220906",
+      "period": "1730",
+      "tag": "E1",
+      "sumo_seed": 1635170000,
+      "arrival_seed_example": 1969883481,
+      "route_sha256": "79292b808ff6a2ba31ee574667588c8464dcfeec20f9d11008f57bec9cdd0385"
+    },
+    {
+      "date": "20220906",
+      "period": "1730",
+      "tag": "E2",
+      "sumo_seed": 401764516,
+      "arrival_seed_example": 547931583,
+      "route_sha256": "c2345110940dcbe577246339c5c4076204e3502aeba6300cecad281f2713c9e6"
+    },
+    {
+      "date": "20220906",
+      "period": "2100",
+      "tag": "E1",
+      "sumo_seed": 200911558,
+      "arrival_seed_example": 143527055,
+      "route_sha256": "97e5192c5cf28ebfc24ed700fd42b60295925043abefe9e345248a4f7456bfa3"
+    },
+    {
+      "date": "20220906",
+      "period": "2100",
+      "tag": "E2",
+      "sumo_seed": 1095549536,
+      "arrival_seed_example": 1382752853,
+      "route_sha256": "ce7b5db07e5748d6a8cbdca0e71e7e35df26172c80f208d9da636b198c980752"
+    },
+    {
+      "date": "20220813",
+      "period": "0730",
+      "tag": "E1",
+      "sumo_seed": 1710288685,
+      "arrival_seed_example": 111553644,
+      "route_sha256": "52a146e487add7b4d7d6633096355cc239b4b230b2222c86b1ce7440ddc7c595"
+    },
+    {
+      "date": "20220813",
+      "period": "0730",
+      "tag": "E2",
+      "sumo_seed": 696534549,
+      "arrival_seed_example": 549772073,
+      "route_sha256": "7015c487fd500f3ecb57ec8dfa4e17fce6b429925d2ede72ae2f65eb40cf829e"
+    },
+    {
+      "date": "20220813",
+      "period": "1000",
+      "tag": "E1",
+      "sumo_seed": 175781686,
+      "arrival_seed_example": 73681904,
+      "route_sha256": "8d49ffd3102392f8d6cc818b1529cd65cc077e3dbc20834cdc2b8c30d3af9ee4"
+    },
+    {
+      "date": "20220813",
+      "period": "1000",
+      "tag": "E2",
+      "sumo_seed": 306946619,
+      "arrival_seed_example": 1025416488,
+      "route_sha256": "866679595bbc6b843b305ec99b662627383b26d314df36a110d158f933714f6b"
+    },
+    {
+      "date": "20220813",
+      "period": "1230",
+      "tag": "E1",
+      "sumo_seed": 306241094,
+      "arrival_seed_example": 1348755553,
+      "route_sha256": "ed689b09a5830f394f722a95e26b346f5bdd3f457f2cd9dfd15b95673dbbfdd8"
+    },
+    {
+      "date": "20220813",
+      "period": "1230",
+      "tag": "E2",
+      "sumo_seed": 1451341514,
+      "arrival_seed_example": 2021186824,
+      "route_sha256": "0bc4bb818d5c2fc0c42ebee6729479c6e6585a4438680743b4402fe4c4fb25d8"
+    },
+    {
+      "date": "20220813",
+      "period": "1500",
+      "tag": "E1",
+      "sumo_seed": 604970231,
+      "arrival_seed_example": 1467424405,
+      "route_sha256": "27c0c497a51e87b3c934eb109b1000f41fa65fadad0743b3e1ac74dcc781e644"
+    },
+    {
+      "date": "20220813",
+      "period": "1500",
+      "tag": "E2",
+      "sumo_seed": 1782600102,
+      "arrival_seed_example": 1496662325,
+      "route_sha256": "5a0e2df8f95d34ac6e968195e37f72397814d01d71a0077c8b3303a4b34dc75b"
+    },
+    {
+      "date": "20220813",
+      "period": "1730",
+      "tag": "E1",
+      "sumo_seed": 1634507145,
+      "arrival_seed_example": 543919611,
+      "route_sha256": "a0e990b42508f39b69bcf3c99ed553e9917781700c67d6015bcbf4affcea563a"
+    },
+    {
+      "date": "20220813",
+      "period": "1730",
+      "tag": "E2",
+      "sumo_seed": 892761226,
+      "arrival_seed_example": 1749736600,
+      "route_sha256": "9a201f0ea86430224ebef505bb68211f68870cc653914a34e3e5d6e3bb9a9512"
+    },
+    {
+      "date": "20220813",
+      "period": "2100",
+      "tag": "E1",
+      "sumo_seed": 813832219,
+      "arrival_seed_example": 1486164118,
+      "route_sha256": "24bca38506fb7422c06366cd17482e1a179257507ad06040cad72219de73dd76"
+    },
+    {
+      "date": "20220813",
+      "period": "2100",
+      "tag": "E2",
+      "sumo_seed": 1082630931,
+      "arrival_seed_example": 533224525,
+      "route_sha256": "72ac570ac75eabd7735419cf0f9fca29bd598bb9dff587699471f6a710d75a7e"
+    },
+    {
+      "date": "20220820",
+      "period": "0730",
+      "tag": "E1",
+      "sumo_seed": 1427269116,
+      "arrival_seed_example": 1121180109,
+      "route_sha256": "cd981bea53eabc7c289a11581a8496937a6f4063215f06c6265a941fdca9876a"
+    },
+    {
+      "date": "20220820",
+      "period": "0730",
+      "tag": "E2",
+      "sumo_seed": 1626785996,
+      "arrival_seed_example": 374007871,
+      "route_sha256": "ad9ddd12d191df7b7b259d60b3b2d6e10eb50f5a3121f3d8ab6d2f6df4d5822d"
+    },
+    {
+      "date": "20220820",
+      "period": "1000",
+      "tag": "E1",
+      "sumo_seed": 411764294,
+      "arrival_seed_example": 641270194,
+      "route_sha256": "837085693d5e23763b8dfc5ffc2f7a23dc18d68de4d5ec4354b133506630755f"
+    },
+    {
+      "date": "20220820",
+      "period": "1000",
+      "tag": "E2",
+      "sumo_seed": 1707930456,
+      "arrival_seed_example": 925361916,
+      "route_sha256": "065c1626f562eb3856ca91ee7c6a85f15f08221822c7fb9425e7707f65faf8b9"
+    },
+    {
+      "date": "20220820",
+      "period": "1230",
+      "tag": "E1",
+      "sumo_seed": 1672557844,
+      "arrival_seed_example": 850200074,
+      "route_sha256": "bf9174df126f0adb2bd0faf46b9bbf4aa088aec58071a38bb5b0a31390e0d171"
+    },
+    {
+      "date": "20220820",
+      "period": "1230",
+      "tag": "E2",
+      "sumo_seed": 582782054,
+      "arrival_seed_example": 1028857866,
+      "route_sha256": "583dfd1cc764a4bd17ce08bda98bf56742d7c655bcc76127b6cd1e2313bf783e"
+    },
+    {
+      "date": "20220820",
+      "period": "1500",
+      "tag": "E1",
+      "sumo_seed": 1802429285,
+      "arrival_seed_example": 1620396119,
+      "route_sha256": "1381e751d53d81864e0952d47e96a00f93723de11ada099c3a5b049a1fdf2ffb"
+    },
+    {
+      "date": "20220820",
+      "period": "1500",
+      "tag": "E2",
+      "sumo_seed": 1237442922,
+      "arrival_seed_example": 1709014742,
+      "route_sha256": "2573ad9c6c3cb62299c410682bdd1fc34ad0c4e1e54fb5fa1c2915fb2ef1025e"
+    },
+    {
+      "date": "20220820",
+      "period": "1730",
+      "tag": "E1",
+      "sumo_seed": 464632137,
+      "arrival_seed_example": 1340260490,
+      "route_sha256": "5c2a085f000692b18ccd1148a62fc35a84161429d26ce6251bdff465a2f02242"
+    },
+    {
+      "date": "20220820",
+      "period": "1730",
+      "tag": "E2",
+      "sumo_seed": 1150030212,
+      "arrival_seed_example": 202240485,
+      "route_sha256": "574213587291726cd46bc820c49f5a73b7d89f9fd290b82d31b9324f9a3617f3"
+    },
+    {
+      "date": "20220820",
+      "period": "2100",
+      "tag": "E1",
+      "sumo_seed": 872238985,
+      "arrival_seed_example": 1317655821,
+      "route_sha256": "af6a0a463ffcbe0dda3e8822c229d2aeceb80f04f8ce834e4076682d92daa114"
+    },
+    {
+      "date": "20220820",
+      "period": "2100",
+      "tag": "E2",
+      "sumo_seed": 1207891670,
+      "arrival_seed_example": 650726481,
+      "route_sha256": "76fae559efc7f833d260dbf3e041d5fc1d712f6b8bcace95ca95c4c6e4433c59"
+    },
+    {
+      "date": "20220911",
+      "period": "0730",
+      "tag": "E1",
+      "sumo_seed": 785348209,
+      "arrival_seed_example": 1201584376,
+      "route_sha256": "d6625d82a9d57adbe9f9d7bf31130bde61f6d1ae071f6dc1ca7cb43d3a1e4ab8"
+    },
+    {
+      "date": "20220911",
+      "period": "0730",
+      "tag": "E2",
+      "sumo_seed": 1484589804,
+      "arrival_seed_example": 25697218,
+      "route_sha256": "a2c482206ee0c105d2c9a922a9e9d6f3b3c7f3fb46f19a0a990e2de73683de40"
+    },
+    {
+      "date": "20220911",
+      "period": "1000",
+      "tag": "E1",
+      "sumo_seed": 682706354,
+      "arrival_seed_example": 163844195,
+      "route_sha256": "3ede9f721308a1d79380da6b285272223a4898badcc516bd17f7106d32fc3ad9"
+    },
+    {
+      "date": "20220911",
+      "period": "1000",
+      "tag": "E2",
+      "sumo_seed": 1687192316,
+      "arrival_seed_example": 205085683,
+      "route_sha256": "b75c43038540e8fafb67e125900b705cb205e34c5b1be3ec784b6bb50ce0b8a6"
+    },
+    {
+      "date": "20220911",
+      "period": "1230",
+      "tag": "E1",
+      "sumo_seed": 2126276239,
+      "arrival_seed_example": 1527277592,
+      "route_sha256": "08a27029f0e7b03761e3f3d18efdd8c3f459f175c7b01aba920799e4eab51200"
+    },
+    {
+      "date": "20220911",
+      "period": "1230",
+      "tag": "E2",
+      "sumo_seed": 1600249854,
+      "arrival_seed_example": 1681049076,
+      "route_sha256": "cf961416d84119261db9b244c4c5bcfa9583c7c43ba7684cc51c98a05d79c805"
+    },
+    {
+      "date": "20220911",
+      "period": "1500",
+      "tag": "E1",
+      "sumo_seed": 189371835,
+      "arrival_seed_example": 2053546273,
+      "route_sha256": "61fd6fac445b6007e15c8f6c1b8a5ecd3277236e9ebe4b5c8a2a1f08e948abc4"
+    },
+    {
+      "date": "20220911",
+      "period": "1500",
+      "tag": "E2",
+      "sumo_seed": 617396951,
+      "arrival_seed_example": 1487289678,
+      "route_sha256": "834b9cf3a0b4b1f9e9432cb3c54ee7f3671efdab79b90e577e780d2f5c512c83"
+    },
+    {
+      "date": "20220911",
+      "period": "1730",
+      "tag": "E1",
+      "sumo_seed": 577357063,
+      "arrival_seed_example": 745028893,
+      "route_sha256": "d1bdc0819cd6d99c273768a73bd1cee059c6447573013aa422373ad5faaa6bca"
+    },
+    {
+      "date": "20220911",
+      "period": "1730",
+      "tag": "E2",
+      "sumo_seed": 1589574998,
+      "arrival_seed_example": 882511245,
+      "route_sha256": "d2dd394e4d6c5c44ddef1673241e448ded51ccc2abe4d44ce503180cec7aa6a4"
+    },
+    {
+      "date": "20220911",
+      "period": "2100",
+      "tag": "E1",
+      "sumo_seed": 2119036560,
+      "arrival_seed_example": 1182803642,
+      "route_sha256": "ba1fdd8038c5f6ea7e608aa1bdca5b70a0bf895dfdd74b986c47ae22601b6849"
+    },
+    {
+      "date": "20220911",
+      "period": "2100",
+      "tag": "E2",
+      "sumo_seed": 1059482003,
+      "arrival_seed_example": 1424954024,
+      "route_sha256": "04e7cf8fc1694bf817057a64b264c0021ac8aaa706c59a362dab020d70744394"
+    }
+  ],
+  "situations_confirmation": [
+    {
+      "date": "20220811",
+      "period": "0730",
+      "tag": "C1",
+      "sumo_seed": 2094135067,
+      "arrival_seed_example": 1321627780,
+      "route_sha256": "a36b84b93a80bc4e0921cd9fe7e56c1151ad90610f5608439524a49478e993dc"
+    },
+    {
+      "date": "20220811",
+      "period": "0730",
+      "tag": "C2",
+      "sumo_seed": 547756927,
+      "arrival_seed_example": 1240971032,
+      "route_sha256": "d40ffec98f352d46379e9916faf0049064ce1b31a0936026c0e16c35defb651e"
+    },
+    {
+      "date": "20220811",
+      "period": "1000",
+      "tag": "C1",
+      "sumo_seed": 881787233,
+      "arrival_seed_example": 2010380319,
+      "route_sha256": "26fed3b217428546b8fa80de9f02e6b80ca5308e962f75664ccd2b921fe3a278"
+    },
+    {
+      "date": "20220811",
+      "period": "1000",
+      "tag": "C2",
+      "sumo_seed": 773568274,
+      "arrival_seed_example": 1751771159,
+      "route_sha256": "ee5f49864084e9d705771e7801a9e3ff0679e932abff410a7dd3a8380b7ba7ae"
+    },
+    {
+      "date": "20220811",
+      "period": "1230",
+      "tag": "C1",
+      "sumo_seed": 1851837806,
+      "arrival_seed_example": 978645967,
+      "route_sha256": "cc38857bea432c2b9589946dfb22f6223d2960665b42ecb6ef8d31cd67ab5112"
+    },
+    {
+      "date": "20220811",
+      "period": "1230",
+      "tag": "C2",
+      "sumo_seed": 1033964663,
+      "arrival_seed_example": 1388321397,
+      "route_sha256": "7707923f1c4d115cf7293f6ad3c26b5e4006dfb52c635875da9f8f671235f6f4"
+    },
+    {
+      "date": "20220811",
+      "period": "1500",
+      "tag": "C1",
+      "sumo_seed": 1793961856,
+      "arrival_seed_example": 788801981,
+      "route_sha256": "c3351760b4795e02b6225a1af71dbb160ab27e4731e6bca00414c4a6135d39b8"
+    },
+    {
+      "date": "20220811",
+      "period": "1500",
+      "tag": "C2",
+      "sumo_seed": 965810105,
+      "arrival_seed_example": 900399311,
+      "route_sha256": "213580f7054fdb9b849a2f3b74e6ed6c8a1f0c92779c5d6c84dfe85a0d28d226"
+    },
+    {
+      "date": "20220811",
+      "period": "1730",
+      "tag": "C1",
+      "sumo_seed": 737063899,
+      "arrival_seed_example": 823530093,
+      "route_sha256": "a99e0570ebfec450a1b8278884928188156c8ac0c1d5131906eabe1a3136e56c"
+    },
+    {
+      "date": "20220811",
+      "period": "1730",
+      "tag": "C2",
+      "sumo_seed": 944636093,
+      "arrival_seed_example": 1228549292,
+      "route_sha256": "5c7e4d58bdd57c0455a2b137fd60b974dcf0c795560fac6778b076465238a518"
+    },
+    {
+      "date": "20220811",
+      "period": "2100",
+      "tag": "C1",
+      "sumo_seed": 787358106,
+      "arrival_seed_example": 1769622325,
+      "route_sha256": "dec131e0c365ab36efccf7248e9fb6e7e8cad0ab3506df8104bf8fd939efef24"
+    },
+    {
+      "date": "20220811",
+      "period": "2100",
+      "tag": "C2",
+      "sumo_seed": 547475391,
+      "arrival_seed_example": 1669762053,
+      "route_sha256": "98af9255e8c2bdf157c638a1fa19ecaf7aa025c0ad8346648be317d6b4291e62"
+    },
+    {
+      "date": "20220819",
+      "period": "0730",
+      "tag": "C1",
+      "sumo_seed": 695175620,
+      "arrival_seed_example": 1177236385,
+      "route_sha256": "7ea4b18c2cf98a54a812f79a24ce113546345ff5db1758fc50869eab364549e9"
+    },
+    {
+      "date": "20220819",
+      "period": "0730",
+      "tag": "C2",
+      "sumo_seed": 1981717549,
+      "arrival_seed_example": 1651176784,
+      "route_sha256": "723aeef5c6084d59c94e790aaf5b904fdccad4afd60ea8a60aa2c4fc122520b1"
+    },
+    {
+      "date": "20220819",
+      "period": "1000",
+      "tag": "C1",
+      "sumo_seed": 927531656,
+      "arrival_seed_example": 2006681719,
+      "route_sha256": "4ac3ccb9aaf0df801881d2622fc34054bc5810a2fbb0e522e5c112596198a8cf"
+    },
+    {
+      "date": "20220819",
+      "period": "1000",
+      "tag": "C2",
+      "sumo_seed": 1907162690,
+      "arrival_seed_example": 829231304,
+      "route_sha256": "6edffc49cc0c271e6d556cf88f7925f1352c7e19815c0a11b13f68bb84c07013"
+    },
+    {
+      "date": "20220819",
+      "period": "1230",
+      "tag": "C1",
+      "sumo_seed": 169098640,
+      "arrival_seed_example": 973178861,
+      "route_sha256": "f77dfd8e304724c2622c02494ff409ad8f8c8ce95e3d09a73824c384eeb95f2d"
+    },
+    {
+      "date": "20220819",
+      "period": "1230",
+      "tag": "C2",
+      "sumo_seed": 731242729,
+      "arrival_seed_example": 1192692557,
+      "route_sha256": "b8a8bec28dfcafd81926bf5d1ceef2598ecba63f14f3904b5e9d09634f015b3e"
+    },
+    {
+      "date": "20220819",
+      "period": "1500",
+      "tag": "C1",
+      "sumo_seed": 61909548,
+      "arrival_seed_example": 1015249738,
+      "route_sha256": "54a571243d708bbdf69bc86d4bfb912d29178ccd878aa96071544477115fd6b2"
+    },
+    {
+      "date": "20220819",
+      "period": "1500",
+      "tag": "C2",
+      "sumo_seed": 1409584520,
+      "arrival_seed_example": 1185632427,
+      "route_sha256": "2f816ed456bd05af76a4417ca6455513fb1e0f2c142e4f69d7a86181696d5cbe"
+    },
+    {
+      "date": "20220819",
+      "period": "1730",
+      "tag": "C1",
+      "sumo_seed": 1036353708,
+      "arrival_seed_example": 1986797861,
+      "route_sha256": "b953740f28a574e84471a0e9b193b84d7a39470c939b5200db674ad14b2c6d08"
+    },
+    {
+      "date": "20220819",
+      "period": "1730",
+      "tag": "C2",
+      "sumo_seed": 1497829699,
+      "arrival_seed_example": 528622277,
+      "route_sha256": "0f23d55f95bc0054054ae583007edb344e22a881d46cb03f52960c21d721544b"
+    },
+    {
+      "date": "20220819",
+      "period": "2100",
+      "tag": "C1",
+      "sumo_seed": 2132262148,
+      "arrival_seed_example": 67032299,
+      "route_sha256": "61f693c4ee4313be0a5313c52120aefaa1f66ddb8bd5353408a8bec0da8a11e6"
+    },
+    {
+      "date": "20220819",
+      "period": "2100",
+      "tag": "C2",
+      "sumo_seed": 1262197143,
+      "arrival_seed_example": 658382211,
+      "route_sha256": "147bd35df2e85b8710e21c105b5d7287d58b367af37904ddda6e47929a90d503"
+    },
+    {
+      "date": "20220823",
+      "period": "0730",
+      "tag": "C1",
+      "sumo_seed": 2064021726,
+      "arrival_seed_example": 1867212272,
+      "route_sha256": "ed219b458e7ebe498450c7027466363981cce4b4eccb3f406635c880f1e3a1d0"
+    },
+    {
+      "date": "20220823",
+      "period": "0730",
+      "tag": "C2",
+      "sumo_seed": 474420710,
+      "arrival_seed_example": 1349404083,
+      "route_sha256": "9d0ffa746ddf95439cccd43521a63e897449b30bcd3b98ec50399844fb45def2"
+    },
+    {
+      "date": "20220823",
+      "period": "1000",
+      "tag": "C1",
+      "sumo_seed": 2102570327,
+      "arrival_seed_example": 1088889153,
+      "route_sha256": "faa751af5a53f98108e394720c334302a625ea57437fa3b7a6484f3d5132e31e"
+    },
+    {
+      "date": "20220823",
+      "period": "1000",
+      "tag": "C2",
+      "sumo_seed": 1551635658,
+      "arrival_seed_example": 921712596,
+      "route_sha256": "f4604efd9ebdd26f503732515f77e79c24f7273931b620fc1b12ab2185ee5b87"
+    },
+    {
+      "date": "20220823",
+      "period": "1230",
+      "tag": "C1",
+      "sumo_seed": 1163191165,
+      "arrival_seed_example": 440683726,
+      "route_sha256": "d970e4acecafb420f9d5a7d54b268963ba6463ebeff1cae21c2f8b8700661898"
+    },
+    {
+      "date": "20220823",
+      "period": "1230",
+      "tag": "C2",
+      "sumo_seed": 374116423,
+      "arrival_seed_example": 1383784415,
+      "route_sha256": "e0d7cd1888e4b8c951ac5a07efc98105720b8a32f2827f04ed615e306029a20b"
+    },
+    {
+      "date": "20220823",
+      "period": "1500",
+      "tag": "C1",
+      "sumo_seed": 68172611,
+      "arrival_seed_example": 377500428,
+      "route_sha256": "2af63c5400a2e95d4834c3604dca380ef25d65cd52c3d28bc6aa459ddc8414e8"
+    },
+    {
+      "date": "20220823",
+      "period": "1500",
+      "tag": "C2",
+      "sumo_seed": 506130760,
+      "arrival_seed_example": 1096940485,
+      "route_sha256": "b7917626e0cd11da4f40d5ed1c7d40933d8b198c24f6e9d716bca2d974074f60"
+    },
+    {
+      "date": "20220823",
+      "period": "1730",
+      "tag": "C1",
+      "sumo_seed": 992457697,
+      "arrival_seed_example": 2028714441,
+      "route_sha256": "60ed3713ec95f185785b1dcde0685f6ed2eeba6bf82653c3ffa856bf41284128"
+    },
+    {
+      "date": "20220823",
+      "period": "1730",
+      "tag": "C2",
+      "sumo_seed": 1753900148,
+      "arrival_seed_example": 1329102289,
+      "route_sha256": "3ebc3cf45326b065dd6b9c520442c19ea0f8e77db25ce9e54e3550eec2ad6469"
+    },
+    {
+      "date": "20220823",
+      "period": "2100",
+      "tag": "C1",
+      "sumo_seed": 1776836768,
+      "arrival_seed_example": 1985016823,
+      "route_sha256": "e4bb90ca029a3308647d90828c5235e86b2eb5d08a16ad1a4d125948341626d9"
+    },
+    {
+      "date": "20220823",
+      "period": "2100",
+      "tag": "C2",
+      "sumo_seed": 595079064,
+      "arrival_seed_example": 125001216,
+      "route_sha256": "e204122d384ad173250b93bbd213503876e62553b09bf9f22c789706b2c5f39c"
+    },
+    {
+      "date": "20220906",
+      "period": "0730",
+      "tag": "C1",
+      "sumo_seed": 279127794,
+      "arrival_seed_example": 695985108,
+      "route_sha256": "99a9c3b73ab710d28e05a326e51c2fb0a572e4027e7c913cb4445f1a8249d4b2"
+    },
+    {
+      "date": "20220906",
+      "period": "0730",
+      "tag": "C2",
+      "sumo_seed": 1465054966,
+      "arrival_seed_example": 447130530,
+      "route_sha256": "ad962e0f7b84b5ba4bfc9fe367092cf4f8f661baf201f8cdf98b1dd4ea129dfb"
+    },
+    {
+      "date": "20220906",
+      "period": "1000",
+      "tag": "C1",
+      "sumo_seed": 712292867,
+      "arrival_seed_example": 1056029447,
+      "route_sha256": "971b248075a531e8c92feb420a52cffe028c253caa8b0917e74d2edbce6202e1"
+    },
+    {
+      "date": "20220906",
+      "period": "1000",
+      "tag": "C2",
+      "sumo_seed": 1689407956,
+      "arrival_seed_example": 142498326,
+      "route_sha256": "ddb4c8d84a79f5b8affe16a29508c312c1835a01fb971942c6c28779ca492bd4"
+    },
+    {
+      "date": "20220906",
+      "period": "1230",
+      "tag": "C1",
+      "sumo_seed": 105104357,
+      "arrival_seed_example": 1742028261,
+      "route_sha256": "39557bd06b9fe00d0b191ade84377361968b2bef9ecf973ba8d9745e722f5d15"
+    },
+    {
+      "date": "20220906",
+      "period": "1230",
+      "tag": "C2",
+      "sumo_seed": 959621666,
+      "arrival_seed_example": 1515666087,
+      "route_sha256": "109d0e4f180278db94ca548f1c27d9772b941f225bbdf37e4c7b6bb8b5353cb6"
+    },
+    {
+      "date": "20220906",
+      "period": "1500",
+      "tag": "C1",
+      "sumo_seed": 1177923396,
+      "arrival_seed_example": 877629435,
+      "route_sha256": "66cad6e977d6a9619d33486f0458f3ba5db206eea458f12d610d2c00261bbf91"
+    },
+    {
+      "date": "20220906",
+      "period": "1500",
+      "tag": "C2",
+      "sumo_seed": 1352591036,
+      "arrival_seed_example": 905010434,
+      "route_sha256": "c1bcedbfbd9b97cf7ebf975cb0eee3c98f6606d117ba3c7eabd4324102087ab3"
+    },
+    {
+      "date": "20220906",
+      "period": "1730",
+      "tag": "C1",
+      "sumo_seed": 1984715459,
+      "arrival_seed_example": 469245935,
+      "route_sha256": "bff7e8be97916a1a3bbb9a57bf5f77d257a52c92d9bf2296a6b9d04292b817b0"
+    },
+    {
+      "date": "20220906",
+      "period": "1730",
+      "tag": "C2",
+      "sumo_seed": 239060368,
+      "arrival_seed_example": 1133874420,
+      "route_sha256": "ac8f080bcd632774122f5700bb345f24baab3aa75b0e5110af6beba00e72de19"
+    },
+    {
+      "date": "20220906",
+      "period": "2100",
+      "tag": "C1",
+      "sumo_seed": 202442428,
+      "arrival_seed_example": 307123622,
+      "route_sha256": "e3de5c056280215fee534ef5bfc288e125f5ca2368ebeee1cd1534f930332bb1"
+    },
+    {
+      "date": "20220906",
+      "period": "2100",
+      "tag": "C2",
+      "sumo_seed": 1701292569,
+      "arrival_seed_example": 1895146034,
+      "route_sha256": "bc611f89eeb4217d23b8eb4ae95f87853cdfd930f88776907bc487ac6f0320c1"
+    },
+    {
+      "date": "20220813",
+      "period": "0730",
+      "tag": "C1",
+      "sumo_seed": 2071835427,
+      "arrival_seed_example": 2114478379,
+      "route_sha256": "52e90368264ed2ea461eab5a96ed42dd7dc8d3ed7031745263ed857118396f29"
+    },
+    {
+      "date": "20220813",
+      "period": "0730",
+      "tag": "C2",
+      "sumo_seed": 807881625,
+      "arrival_seed_example": 863597951,
+      "route_sha256": "617f73f1a1a796e06445270d29c846365a75fc857970858809e31d70052b3681"
+    },
+    {
+      "date": "20220813",
+      "period": "1000",
+      "tag": "C1",
+      "sumo_seed": 1916149725,
+      "arrival_seed_example": 426314416,
+      "route_sha256": "22a69a723f86a1df7f44b4954459d69fe49f8f82f4617baf62d87561213be878"
+    },
+    {
+      "date": "20220813",
+      "period": "1000",
+      "tag": "C2",
+      "sumo_seed": 1485902169,
+      "arrival_seed_example": 1222995237,
+      "route_sha256": "85a31328ebd12d43fe4cab3b00d33192fb47265ec53278828f1498fd91fe873e"
+    },
+    {
+      "date": "20220813",
+      "period": "1230",
+      "tag": "C1",
+      "sumo_seed": 196651562,
+      "arrival_seed_example": 1106126265,
+      "route_sha256": "0ec675e0024836fecb769bebaa0c3f575eeea04bb6bf449ec26b8ac1a4e0218c"
+    },
+    {
+      "date": "20220813",
+      "period": "1230",
+      "tag": "C2",
+      "sumo_seed": 32346160,
+      "arrival_seed_example": 248009044,
+      "route_sha256": "299a58723b5e2d3c394603ba30d6aedf02eb193757a2f0af135fb53e070b1c02"
+    },
+    {
+      "date": "20220813",
+      "period": "1500",
+      "tag": "C1",
+      "sumo_seed": 358464831,
+      "arrival_seed_example": 590416858,
+      "route_sha256": "24ed0de9bddb3d87f4ac2241ea526df2112c359ededb16bbea1c14136a5ebc7c"
+    },
+    {
+      "date": "20220813",
+      "period": "1500",
+      "tag": "C2",
+      "sumo_seed": 400440521,
+      "arrival_seed_example": 228880113,
+      "route_sha256": "2e92564bfe416b24e071945177d437f14cf4df1b512345642513aba622efde84"
+    },
+    {
+      "date": "20220813",
+      "period": "1730",
+      "tag": "C1",
+      "sumo_seed": 585193367,
+      "arrival_seed_example": 58140184,
+      "route_sha256": "199948c5dbd8c9bca8f72431d98f1830e87e1c7afa93645cc8a1a6a57fbe8585"
+    },
+    {
+      "date": "20220813",
+      "period": "1730",
+      "tag": "C2",
+      "sumo_seed": 1671998105,
+      "arrival_seed_example": 1044655331,
+      "route_sha256": "98854d8ecc4a5348c21ff53bf314c80686ea8530813089efd6fe266bdc168f4f"
+    },
+    {
+      "date": "20220813",
+      "period": "2100",
+      "tag": "C1",
+      "sumo_seed": 352098019,
+      "arrival_seed_example": 287093630,
+      "route_sha256": "4e18e7475c7fd31d479982fe5c1c3aa20dd5b6865e3196b2697ccc35d2ecb295"
+    },
+    {
+      "date": "20220813",
+      "period": "2100",
+      "tag": "C2",
+      "sumo_seed": 1509133348,
+      "arrival_seed_example": 898590576,
+      "route_sha256": "e5c685102096883083a05f10f664a4a143fb08d1fa4d9742fff5f2efb53f71c7"
+    },
+    {
+      "date": "20220820",
+      "period": "0730",
+      "tag": "C1",
+      "sumo_seed": 724636927,
+      "arrival_seed_example": 1931091327,
+      "route_sha256": "8c72ac7b49acc100675002acd7234dfd95471abf75992cb897643925750baa4d"
+    },
+    {
+      "date": "20220820",
+      "period": "0730",
+      "tag": "C2",
+      "sumo_seed": 843771175,
+      "arrival_seed_example": 1429968896,
+      "route_sha256": "2a9ffc6cfa0ca191166f5a5ec7c67f597e94324931dc5895ca4ebc714835bf57"
+    },
+    {
+      "date": "20220820",
+      "period": "1000",
+      "tag": "C1",
+      "sumo_seed": 1585392332,
+      "arrival_seed_example": 828307323,
+      "route_sha256": "de2e5f0af947c09d19314a44d9fb730b44614004da113f09f81871d28a0a0f71"
+    },
+    {
+      "date": "20220820",
+      "period": "1000",
+      "tag": "C2",
+      "sumo_seed": 1870367173,
+      "arrival_seed_example": 1828621341,
+      "route_sha256": "42a9dcfc4aad24e982a195d77ce609d1d90c6bf107d2f603e65d7fb0379821f8"
+    },
+    {
+      "date": "20220820",
+      "period": "1230",
+      "tag": "C1",
+      "sumo_seed": 168103493,
+      "arrival_seed_example": 781333448,
+      "route_sha256": "cddd829290449214ffd5611758ee8d8bffc6668f736e5a60955574215f30fb9c"
+    },
+    {
+      "date": "20220820",
+      "period": "1230",
+      "tag": "C2",
+      "sumo_seed": 700372342,
+      "arrival_seed_example": 1022351349,
+      "route_sha256": "9a3c02b73b955db3f9ea6e009b0d8d9822cb8c800b86377b2d41f4150252ec95"
+    },
+    {
+      "date": "20220820",
+      "period": "1500",
+      "tag": "C1",
+      "sumo_seed": 81312484,
+      "arrival_seed_example": 1269450847,
+      "route_sha256": "0fba46789303935dfa22769f9507976407b066ac2ce34645d8eebc02d5125770"
+    },
+    {
+      "date": "20220820",
+      "period": "1500",
+      "tag": "C2",
+      "sumo_seed": 1794241318,
+      "arrival_seed_example": 1156240077,
+      "route_sha256": "7531f113ab678d459c694029d9e9afd5fd5bb688da93d783c36b36c38de277ca"
+    },
+    {
+      "date": "20220820",
+      "period": "1730",
+      "tag": "C1",
+      "sumo_seed": 1199996892,
+      "arrival_seed_example": 1051066076,
+      "route_sha256": "07fae240668ecb64716d94c43ff19db929263af32f56cf76813818c7c2637a13"
+    },
+    {
+      "date": "20220820",
+      "period": "1730",
+      "tag": "C2",
+      "sumo_seed": 1813745650,
+      "arrival_seed_example": 885226440,
+      "route_sha256": "2ffb98a13d97e6b13b516dc4cee668a66f10d90fabfc06298139c78dd3597fbf"
+    },
+    {
+      "date": "20220820",
+      "period": "2100",
+      "tag": "C1",
+      "sumo_seed": 867529752,
+      "arrival_seed_example": 1329240189,
+      "route_sha256": "63a815b9bc9f1495918b8bff9d684730ea20f0bd8da48b29425b3e6a658db34a"
+    },
+    {
+      "date": "20220820",
+      "period": "2100",
+      "tag": "C2",
+      "sumo_seed": 188158968,
+      "arrival_seed_example": 2008136893,
+      "route_sha256": "d8fac5998ac83e4288a65e05eb2178cbcc3c4853e3ceaf168ab32636197b687d"
+    },
+    {
+      "date": "20220911",
+      "period": "0730",
+      "tag": "C1",
+      "sumo_seed": 235844818,
+      "arrival_seed_example": 1643648356,
+      "route_sha256": "3cf77dcedc037fe01599f9d46c410335995b069291a780ca694aa5e17284b827"
+    },
+    {
+      "date": "20220911",
+      "period": "0730",
+      "tag": "C2",
+      "sumo_seed": 336476648,
+      "arrival_seed_example": 1382174058,
+      "route_sha256": "9f27bb9a20487346c9e8142acc9bd2b00306c35f69630d401b0027e5c2f88a01"
+    },
+    {
+      "date": "20220911",
+      "period": "1000",
+      "tag": "C1",
+      "sumo_seed": 439712882,
+      "arrival_seed_example": 396670227,
+      "route_sha256": "eaa296c93af1549a3c9dc62a9b7391f1bd93d9b9343bddbc95961d7e43015507"
+    },
+    {
+      "date": "20220911",
+      "period": "1000",
+      "tag": "C2",
+      "sumo_seed": 1366021406,
+      "arrival_seed_example": 1366502521,
+      "route_sha256": "691862a8fc736736cc47500f3d01cd55e91f160c80cfe4ad6c111baf58eacce9"
+    },
+    {
+      "date": "20220911",
+      "period": "1230",
+      "tag": "C1",
+      "sumo_seed": 693179165,
+      "arrival_seed_example": 1328318703,
+      "route_sha256": "976ef8bad0ccc0078433e69e63f10a80f2a2e560af37834e9a6bad893d50244b"
+    },
+    {
+      "date": "20220911",
+      "period": "1230",
+      "tag": "C2",
+      "sumo_seed": 336483392,
+      "arrival_seed_example": 859649590,
+      "route_sha256": "4c295422466e3c81d8130e14a938e91ffa5e77b980c83e36c151622c5926f979"
+    },
+    {
+      "date": "20220911",
+      "period": "1500",
+      "tag": "C1",
+      "sumo_seed": 1700980942,
+      "arrival_seed_example": 2014562840,
+      "route_sha256": "b63e4955c33d65a7caa99ea0a35a42d6b510ac205691fa60cde4732b21e913dc"
+    },
+    {
+      "date": "20220911",
+      "period": "1500",
+      "tag": "C2",
+      "sumo_seed": 6631452,
+      "arrival_seed_example": 2072681951,
+      "route_sha256": "bee28612ede112a4d69b06b84c447d643ef0dd55fa6833dda221ea7806a9d977"
+    },
+    {
+      "date": "20220911",
+      "period": "1730",
+      "tag": "C1",
+      "sumo_seed": 522513049,
+      "arrival_seed_example": 1265674433,
+      "route_sha256": "c7a36c2faf6c675e8e2cb4c4053a25b9fc8d3cbe331bd8139c65a4f61c0d9c59"
+    },
+    {
+      "date": "20220911",
+      "period": "1730",
+      "tag": "C2",
+      "sumo_seed": 1185544707,
+      "arrival_seed_example": 1948217354,
+      "route_sha256": "f049262697ed46a5a7ed51abc3cf975cfc26cbb52d7109a7b8823763d8990149"
+    },
+    {
+      "date": "20220911",
+      "period": "2100",
+      "tag": "C1",
+      "sumo_seed": 489643207,
+      "arrival_seed_example": 867731645,
+      "route_sha256": "3cbc5e51db8efb0c840716f689f546d66de5cda3712a75c8a0d00be131dd6548"
+    },
+    {
+      "date": "20220911",
+      "period": "2100",
+      "tag": "C2",
+      "sumo_seed": 1915602019,
+      "arrival_seed_example": 997921214,
+      "route_sha256": "1431d8e2bd0632f8c4d059d7a56e1a11f7960729424c11893a2f3e1592c0dd10"
+    }
+  ],
+  "situations_bprime_data": [
+    {
+      "date": "20220812",
+      "period": "0800",
+      "tag": "T1",
+      "sumo_seed": 2058463576,
+      "arrival_seed_example": 761369020,
+      "route_sha256": "fc1a74318e85e2c35103e3979a873d53809ad8bd9e3b93a5d5d31e88a30fd818"
+    },
+    {
+      "date": "20220812",
+      "period": "0815",
+      "tag": "T2",
+      "sumo_seed": 776566292,
+      "arrival_seed_example": 474079015,
+      "route_sha256": "9d8468b736d8258567d17b8dbe324272386256bca30d81267514cb261bbaa6cb"
+    },
+    {
+      "date": "20220812",
+      "period": "0900",
+      "tag": "T3",
+      "sumo_seed": 1176479508,
+      "arrival_seed_example": 13738800,
+      "route_sha256": "f3ebf7ac11d80418731f1d4c7301c9e10a87dd3f76c418e0a4374ec7396d2893"
+    },
+    {
+      "date": "20220812",
+      "period": "1145",
+      "tag": "T4",
+      "sumo_seed": 2142246703,
+      "arrival_seed_example": 392399142,
+      "route_sha256": "fcf2d66a2c33d517df4ca9bbf5f4f1e095deead463a3d38a4cb095b7cbd89349"
+    },
+    {
+      "date": "20220812",
+      "period": "1445",
+      "tag": "T5",
+      "sumo_seed": 1175734361,
+      "arrival_seed_example": 798170275,
+      "route_sha256": "bf42f96331eec26d0762406c3d15d4dcbeea2301dcd661d7dbc15249d21d341d"
+    },
+    {
+      "date": "20220812",
+      "period": "1615",
+      "tag": "T6",
+      "sumo_seed": 1438341148,
+      "arrival_seed_example": 2058044447,
+      "route_sha256": "fb1938a1b8dd0bec7dff4bdd1f01d064f4eeda6febc306fd91ca8a30d7f6cf5b"
+    },
+    {
+      "date": "20220812",
+      "period": "2015",
+      "tag": "T7",
+      "sumo_seed": 1133661776,
+      "arrival_seed_example": 1093583055,
+      "route_sha256": "db3d2e55d38ed2d84299305c70ddd8e9393d14d981bdfdbf4526deb4194edb64"
+    },
+    {
+      "date": "20220812",
+      "period": "2100",
+      "tag": "T8",
+      "sumo_seed": 2084315151,
+      "arrival_seed_example": 93727646,
+      "route_sha256": "50c8ff3c9ffb483bc68f8fe1ac958ff545c2bb84ae15bd4b259f20dab4b29509"
+    },
+    {
+      "date": "20220822",
+      "period": "0730",
+      "tag": "T9",
+      "sumo_seed": 1979937975,
+      "arrival_seed_example": 1852773114,
+      "route_sha256": "a843f379f783d68e5b5ec35ecc621191286becf449ce7d922a11a6c4d3392911"
+    },
+    {
+      "date": "20220822",
+      "period": "1115",
+      "tag": "T10",
+      "sumo_seed": 706758191,
+      "arrival_seed_example": 1330000114,
+      "route_sha256": "f4aa3823b0637ad6ef6d647ddffaefb1f2bc34fe886cbb044c899cb4e9aa66ce"
+    },
+    {
+      "date": "20220822",
+      "period": "1200",
+      "tag": "T11",
+      "sumo_seed": 839265380,
+      "arrival_seed_example": 2024555625,
+      "route_sha256": "bc56b2aeb3af0072762e3f32f1e884d8d4c1a6caaf5f6d3d688358a9095bc0d2"
+    },
+    {
+      "date": "20220822",
+      "period": "1300",
+      "tag": "T12",
+      "sumo_seed": 1824457280,
+      "arrival_seed_example": 1702975087,
+      "route_sha256": "525889a2bfa7fea9b0ab617f4f44d71533ec579dc2acc59f828e5e03037982aa"
+    },
+    {
+      "date": "20220822",
+      "period": "1330",
+      "tag": "T13",
+      "sumo_seed": 1727081424,
+      "arrival_seed_example": 1558231748,
+      "route_sha256": "89f45fc2a2340de773b4d46337ff182405552f1ba8cf9c42d22f1faf596d466d"
+    },
+    {
+      "date": "20220822",
+      "period": "1430",
+      "tag": "T14",
+      "sumo_seed": 158330817,
+      "arrival_seed_example": 616164784,
+      "route_sha256": "6014ebc10f936f5883edc1cdffcc206804c3f866971461d743680e1db3245fe7"
+    },
+    {
+      "date": "20220822",
+      "period": "1800",
+      "tag": "T15",
+      "sumo_seed": 1190833396,
+      "arrival_seed_example": 1826846137,
+      "route_sha256": "ef8a15b06bc989d1c01323192f4087de67880fc2a3febb4ac940087e271861e2"
+    },
+    {
+      "date": "20220822",
+      "period": "2030",
+      "tag": "T16",
+      "sumo_seed": 558550000,
+      "arrival_seed_example": 1839470773,
+      "route_sha256": "272f6dc8584c0f4c323201cf48de76feeac78b7e194fb63a91c5e265d0578f8f"
+    },
+    {
+      "date": "20220907",
+      "period": "1300",
+      "tag": "T17",
+      "sumo_seed": 811544067,
+      "arrival_seed_example": 853380574,
+      "route_sha256": "2e88e7e3dd0b14637c0f5210fb8f094ff5f2b4f000b7f884f7ef342fb9f848f0"
+    },
+    {
+      "date": "20220907",
+      "period": "1430",
+      "tag": "T18",
+      "sumo_seed": 1011189142,
+      "arrival_seed_example": 1843668987,
+      "route_sha256": "e055e9e9ebd4a750ab2d158edcf0375550cfbadd776979c1a1c99a1fbe98616b"
+    },
+    {
+      "date": "20220907",
+      "period": "1445",
+      "tag": "T19",
+      "sumo_seed": 340224516,
+      "arrival_seed_example": 2072948519,
+      "route_sha256": "a8db0c1b425ad776ef6ec328baff1d35e0b1dc49062a9a026be8f9e8137df400"
+    },
+    {
+      "date": "20220907",
+      "period": "1615",
+      "tag": "T20",
+      "sumo_seed": 1209641513,
+      "arrival_seed_example": 2081549188,
+      "route_sha256": "3c5a6af48fa607a63a489d801179ec205f88b61e0003cf250952ce20d6fdc748"
+    },
+    {
+      "date": "20220907",
+      "period": "1630",
+      "tag": "T21",
+      "sumo_seed": 1611688162,
+      "arrival_seed_example": 1096130540,
+      "route_sha256": "7ead5f0eabf482a8065cd1e5ea21d7e04b9c782d5b7f51b15e0bfed331956ff1"
+    },
+    {
+      "date": "20220907",
+      "period": "1900",
+      "tag": "T22",
+      "sumo_seed": 2010641525,
+      "arrival_seed_example": 1253166131,
+      "route_sha256": "a5509001e7418fa8a2ae7d03be46fa7fd07e36f83d99c8c1105a4deac5c66c70"
+    },
+    {
+      "date": "20220907",
+      "period": "2130",
+      "tag": "T23",
+      "sumo_seed": 1305056538,
+      "arrival_seed_example": 1133213452,
+      "route_sha256": "4faf4c45e6ebc41f2e88f2618a786ef33e3c092d902688b8ec9dfdf83c7cbcf3"
+    },
+    {
+      "date": "20220907",
+      "period": "2145",
+      "tag": "T24",
+      "sumo_seed": 96629973,
+      "arrival_seed_example": 197392631,
+      "route_sha256": "8d8a3d83e296a56cb1957b2a47ad233e5a92ed6b150b581cdd20775d8fabc7ee"
+    },
+    {
+      "date": "20220926",
+      "period": "0715",
+      "tag": "T25",
+      "sumo_seed": 209499485,
+      "arrival_seed_example": 1243075674,
+      "route_sha256": "2853d4f353bd98b326019c1d498305754991bd30cb7f6cdfb1dbc0bc25b232ee"
+    },
+    {
+      "date": "20220926",
+      "period": "0800",
+      "tag": "T26",
+      "sumo_seed": 801541757,
+      "arrival_seed_example": 1492046029,
+      "route_sha256": "06b6b640b17e85c7dacfeb546bf095dbfb457e3f10a934af95219c6fc62a5ede"
+    },
+    {
+      "date": "20220926",
+      "period": "1015",
+      "tag": "T27",
+      "sumo_seed": 1899199794,
+      "arrival_seed_example": 1990997971,
+      "route_sha256": "cfa2228d50d3c359a4f84c4bd071e489349c54cc36fa02001a782f289f7d247e"
+    },
+    {
+      "date": "20220926",
+      "period": "1045",
+      "tag": "T28",
+      "sumo_seed": 1375565842,
+      "arrival_seed_example": 1188607248,
+      "route_sha256": "8fb2047cb3f61dc3a03ee85e22c2dab164d503ac89e807d51f555f5b51f931d7"
+    },
+    {
+      "date": "20220926",
+      "period": "1345",
+      "tag": "T29",
+      "sumo_seed": 205502640,
+      "arrival_seed_example": 116033227,
+      "route_sha256": "a3902b2c2beb7619d91d975edb4c4e9a6d36f5e50ea0f47be3fd620e8302e2e0"
+    },
+    {
+      "date": "20220926",
+      "period": "1400",
+      "tag": "T30",
+      "sumo_seed": 1684152534,
+      "arrival_seed_example": 672332153,
+      "route_sha256": "62e44bdb69b422933b0b0f31135ed4ecd8bb4132b293668f09155b670026077c"
+    },
+    {
+      "date": "20220926",
+      "period": "1945",
+      "tag": "T31",
+      "sumo_seed": 855043628,
+      "arrival_seed_example": 1360453730,
+      "route_sha256": "99322bd7d616e396597b94d7d40ef18c109da92786223c89c106fb4bf651bf81"
+    },
+    {
+      "date": "20220926",
+      "period": "2115",
+      "tag": "T32",
+      "sumo_seed": 919641178,
+      "arrival_seed_example": 96629416,
+      "route_sha256": "24730808e5889fbcc2733204ac4b4832da0456551996295555b7e5864d35fc21"
+    },
+    {
+      "date": "20220928",
+      "period": "0745",
+      "tag": "T33",
+      "sumo_seed": 443152862,
+      "arrival_seed_example": 871197011,
+      "route_sha256": "ff3a84cd7c04ddb19e54224d1376e53a24ad11a95cc9c6d4fa7ffe830279b23e"
+    },
+    {
+      "date": "20220928",
+      "period": "0830",
+      "tag": "T34",
+      "sumo_seed": 954657798,
+      "arrival_seed_example": 1746521276,
+      "route_sha256": "257140506e277fe717984722c62c767f7fb5d063d77a95493910cc991d4e8e9f"
+    },
+    {
+      "date": "20220928",
+      "period": "1200",
+      "tag": "T35",
+      "sumo_seed": 1491454639,
+      "arrival_seed_example": 1078818234,
+      "route_sha256": "32e72fb9df68c15dcaadd1221e0785f93d2741c5467cbaedd19faa75ffc8a768"
+    },
+    {
+      "date": "20220928",
+      "period": "1415",
+      "tag": "T36",
+      "sumo_seed": 1156419016,
+      "arrival_seed_example": 280741554,
+      "route_sha256": "f1b1bb6fe23cc9b9ac62d74bf17fa79c3880ec399e4ba37716fa725a2f988d54"
+    },
+    {
+      "date": "20220928",
+      "period": "1500",
+      "tag": "T37",
+      "sumo_seed": 1328377365,
+      "arrival_seed_example": 518617570,
+      "route_sha256": "31b05c2bb584ce72f3e5b498312953aa621c95ac94c3830afbe862f0f9e649e8"
+    },
+    {
+      "date": "20220928",
+      "period": "1930",
+      "tag": "T38",
+      "sumo_seed": 1681099990,
+      "arrival_seed_example": 1272344847,
+      "route_sha256": "76d5b4a2fcd6e838e0abf932ea36d16bed21aeaacef331180127cfa65288fc7b"
+    },
+    {
+      "date": "20220928",
+      "period": "2015",
+      "tag": "T39",
+      "sumo_seed": 798483011,
+      "arrival_seed_example": 2141645746,
+      "route_sha256": "b3ad9d66ce12593bab10f307a2f1308e314bb035f35b834f835e41fa0fc90e80"
+    },
+    {
+      "date": "20220928",
+      "period": "2115",
+      "tag": "T40",
+      "sumo_seed": 593069345,
+      "arrival_seed_example": 2084404155,
+      "route_sha256": "4dcbb540ba65405c15d6892ea861aee73676a43a0f271974be8cd4deab7cc566"
+    },
+    {
+      "date": "20220814",
+      "period": "0815",
+      "tag": "T41",
+      "sumo_seed": 292107612,
+      "arrival_seed_example": 1764852948,
+      "route_sha256": "5de801d2a8972c32661162826305bfc65d39b68cdb60bbbd6abebeb316bb6353"
+    },
+    {
+      "date": "20220814",
+      "period": "0900",
+      "tag": "T42",
+      "sumo_seed": 308511617,
+      "arrival_seed_example": 914053067,
+      "route_sha256": "5f2b8d55845ef124df4ff3d2a24c34b5671111203830c8c1f5f000f7270c26b4"
+    },
+    {
+      "date": "20220814",
+      "period": "1100",
+      "tag": "T43",
+      "sumo_seed": 2119425524,
+      "arrival_seed_example": 1537821406,
+      "route_sha256": "68a69682787c13d78b5e5f6909dba9a0e093d11ef27024090edb33ff52330df6"
+    },
+    {
+      "date": "20220814",
+      "period": "1130",
+      "tag": "T44",
+      "sumo_seed": 331895804,
+      "arrival_seed_example": 1849763633,
+      "route_sha256": "5d09825a4d9f76eec072d97316845c7e2b87adfa5e162ecb551bb35c1bfbac2b"
+    },
+    {
+      "date": "20220814",
+      "period": "1145",
+      "tag": "T45",
+      "sumo_seed": 242068679,
+      "arrival_seed_example": 1973768807,
+      "route_sha256": "5ddf47a4f3518d2b324a4ebdcb834e1b08b0912a377775854495f049d1c00226"
+    },
+    {
+      "date": "20220814",
+      "period": "1245",
+      "tag": "T46",
+      "sumo_seed": 111524273,
+      "arrival_seed_example": 203599045,
+      "route_sha256": "505ac184373a70268fc9d38d8104982aa759fe317a67e7d50ef314fc6e607264"
+    },
+    {
+      "date": "20220814",
+      "period": "1415",
+      "tag": "T47",
+      "sumo_seed": 1570600995,
+      "arrival_seed_example": 129806167,
+      "route_sha256": "1ceb5f77353ca00810ebed6a35564d63844ac0b6979a7cd8709a57bf1fbda940"
+    },
+    {
+      "date": "20220814",
+      "period": "1530",
+      "tag": "T48",
+      "sumo_seed": 275297125,
+      "arrival_seed_example": 467239125,
+      "route_sha256": "683819e0bbc38d81f4a36d27303036828e71e3ac5f3044b503db51d6535112a4"
+    },
+    {
+      "date": "20221030",
+      "period": "0915",
+      "tag": "T49",
+      "sumo_seed": 69255796,
+      "arrival_seed_example": 481607505,
+      "route_sha256": "f786cd01dad7f00eaf1f7dae4e1c93b33949045ac6b144d1e1fae437104b4750"
+    },
+    {
+      "date": "20221030",
+      "period": "0945",
+      "tag": "T50",
+      "sumo_seed": 1664248418,
+      "arrival_seed_example": 1564001264,
+      "route_sha256": "66bdc18d8d7e8cb2bec79e1dacdfb9df12fa031d3a5d586fbc83b403888a277b"
+    },
+    {
+      "date": "20221030",
+      "period": "1045",
+      "tag": "T51",
+      "sumo_seed": 1405289529,
+      "arrival_seed_example": 1485833022,
+      "route_sha256": "6e5dee2d8a9a253d0f56b106a440a3d9d28cf2f885bc587589c4b4ceb517abf2"
+    },
+    {
+      "date": "20221030",
+      "period": "1300",
+      "tag": "T52",
+      "sumo_seed": 1371961481,
+      "arrival_seed_example": 1305596493,
+      "route_sha256": "9f8d9f946f9b53d328713eee968fbcb340aeae9ade7e186c28c07c96c5855a54"
+    },
+    {
+      "date": "20221030",
+      "period": "1330",
+      "tag": "T53",
+      "sumo_seed": 1127362661,
+      "arrival_seed_example": 1772813057,
+      "route_sha256": "2c605d15cf4c73fcaa64f45fa13eade0578fc62660a65f34989ac2f6d1193753"
+    },
+    {
+      "date": "20221030",
+      "period": "2015",
+      "tag": "T54",
+      "sumo_seed": 1797256640,
+      "arrival_seed_example": 1697507757,
+      "route_sha256": "1a7a62c2c8c3e4027ffab5e3d348964b9db09ba4d9fee11cd9bdfb150afd24f2"
+    },
+    {
+      "date": "20221030",
+      "period": "2115",
+      "tag": "T55",
+      "sumo_seed": 1169606602,
+      "arrival_seed_example": 9555180,
+      "route_sha256": "4721d22e33deca4f055562b539548d37b5e023d22c6f8144af3475ff4e3babe4"
+    },
+    {
+      "date": "20221030",
+      "period": "2130",
+      "tag": "T56",
+      "sumo_seed": 1343416821,
+      "arrival_seed_example": 1091547010,
+      "route_sha256": "98173101e7f5e61e5dadfa4147ba5f08867439dc2978517f4f35d69f59a7ede8"
+    },
+    {
+      "date": "20220909",
+      "period": "1030",
+      "tag": "T57",
+      "sumo_seed": 1365574105,
+      "arrival_seed_example": 330632117,
+      "route_sha256": "0daf1985979277a9b5c402648e61544381bc8e9e5a8fde66cdcd94dcf080cdef"
+    },
+    {
+      "date": "20220909",
+      "period": "1100",
+      "tag": "T58",
+      "sumo_seed": 489913096,
+      "arrival_seed_example": 2123922832,
+      "route_sha256": "5a47ebc22c29a284dddd4e1132e349cec9f8d3f8fd3069913fd13d1d0e876353"
+    },
+    {
+      "date": "20220909",
+      "period": "1215",
+      "tag": "T59",
+      "sumo_seed": 260136075,
+      "arrival_seed_example": 1674939611,
+      "route_sha256": "494a47ef3fa047b74d4d5215458f54eee690d0a0f17601d07dfca65d9cabda8b"
+    },
+    {
+      "date": "20220909",
+      "period": "1345",
+      "tag": "T60",
+      "sumo_seed": 926057974,
+      "arrival_seed_example": 664939336,
+      "route_sha256": "280b6bed408740f1390472bc8e084d029ffb72c92dfadb9b827c4c8d066278d1"
+    },
+    {
+      "date": "20220909",
+      "period": "1645",
+      "tag": "T61",
+      "sumo_seed": 1514348522,
+      "arrival_seed_example": 1565307829,
+      "route_sha256": "41ce46150f0896a7cb49e552fcd0d02c40cbace45755868a31dd5f8bf84d6fb4"
+    },
+    {
+      "date": "20220909",
+      "period": "1945",
+      "tag": "T62",
+      "sumo_seed": 1613082333,
+      "arrival_seed_example": 906339492,
+      "route_sha256": "fd90cd5574c56bc8e5fc96757371bbac6f5e5b220b30a5456256452ae01868f9"
+    },
+    {
+      "date": "20220909",
+      "period": "2030",
+      "tag": "T63",
+      "sumo_seed": 130903963,
+      "arrival_seed_example": 1107953210,
+      "route_sha256": "8a1b265f834c12240043502983b50e6bb5d8b9a399f005caeeb8972a0951a185"
+    },
+    {
+      "date": "20220909",
+      "period": "2130",
+      "tag": "T64",
+      "sumo_seed": 1951236266,
+      "arrival_seed_example": 122319811,
+      "route_sha256": "1112854a1e1ef3df4e39428f00d72b20a9b1032d200125c58dfe6218ece09c89"
+    }
+  ]
+}

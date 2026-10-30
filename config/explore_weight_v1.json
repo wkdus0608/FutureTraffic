@@ -1,0 +1,16 @@
+{
+  "experiment": "WEIGHT1",
+  "description": "P0 가중치 모드 선택형 Double DQN: 추가 개발 확인 평가",
+  "environment": {"fingerprint": "b20888514ea3", "rule_set": "pet1", "north_extension_m": 240, "p0_code": "9440fe1d3869"},
+  "modes": [[1.0, 1.0], [1.5, 1.0], [1.0, 1.5], [1.5, 1.5], [2.0, 2.0]],
+  "mode_weight_order": ["left_east", "left_south"],
+  "episode": {"warmup_s": 1800, "control_s": 3600, "tail_s": 900, "step_s": 5, "horizon_s": 120},
+  "observation": {"size": 110, "mode_mask_slice": [104, 109], "wait_clip": 2.0, "cost_scale": 1000.0, "cost_clip": 10.0},
+  "learning": {"train_seeds": [42, 43, 44, 45, 46], "pilot_episodes": 42, "full_episodes": 139, "learning_rate": 0.001, "buffer_size": 100000, "learning_starts": 1000, "batch_size": 64, "train_freq": 4, "target_update_interval": 5000, "n_steps": 10, "gamma": 0.99, "net_arch": [64, 64], "epsilon_start": 1.0, "epsilon_end": 0.05, "epsilon_decay_steps": 20000, "reward_scale": 1000.0},
+  "train_exclude_dates": ["20220811", "20220823"],
+  "development": {"dates": ["20220811", "20220823"], "periods": ["1300", "1800"], "eval_seeds": [42, 43, 44, 45]},
+  "confirmation": {"dates": ["20220928", "20220813"], "periods": ["0730", "1230", "1730", "2130"], "eval_seeds": [1042, 1043, 1044, 1045, 1046, 1047, 1048, 1049]},
+  "gates": {"activity_points": 20, "activity_groups": 2, "pilot_positive_groups": 3, "confirmation_positive_models": 4, "confirmation_positive_groups": 6, "left_tolerance_s": 5.0, "bootstrap_repeats": 10000, "bootstrap_seed": 20261025, "ci_percentiles": [2.5, 97.5]},
+  "budget": {"total_s": 172800, "initial_s": 21600, "accounting": "sum of elapsed job seconds including SUMO and training, even when parallel", "forecast_margin": 1.25},
+  "inference": "fixed demand groups only; reused dates; no new-date or real-road generalization claim"
+}

@@ -21,6 +21,11 @@ DQN은 모델 파일 지문으로 골라 seed 5개를 묶는다. 계산은 표�
   PRED1은 단독 모형(검증 2일 무작위가 주, 무리 도착은 민감도, 학습 13일은 학습 없는 정책만), PRED12는 12개 지도 검증 46조각 × 5번.
 - TEACH1·TEACH12(선생님 DQN, 103절): 질문 1 선생님 DQN 대 같은 설정 DQN(H1·B12, 주 판정), 2 대 단순 제어, 3 대 선생님 P0
   (선생님을 넘었다·선생님 수준·선생님에 못 미친다), 4 대 흉내만 낸 DQN. 말과 문턱은 PRED와 같다. 확인용 시범 일치율을 함께 적는다.
+- CEIL1·CEIL12·CEIL(천장 재기, 109절): 질문 1 L(더 멀리 보기) 대 P0, 2 O(더 알기, 단독만) 대 P0·P1. 말과 문턱은 PRED와 같다.
+  CEIL은 두 판정의 갈림길(지연만): 하나라도 L이 문턱 이상 짧으면 1단계 계획, 둘 다 문턱 안이면 1단계 안 함, 그 밖은 사용자와 정함.
+- CHOICE(이동별 정보 DQN·고를 때만 묻는 DQN, 114절): 질문 1 B 대 A(H1), 2 C 대 B(주 판정), 3 B·C 대 P0(같은 정보), 4 대 단순 제어.
+  말과 문턱은 PRED와 같고, '낫다'에는 무너진 실행(그날 보정 고정신호보다 지연이 긴 실행) 수가 늘지 않는 조건을 더한다.
+  바탕 구조: 2가 '낫다'면 C, 아니고 1이 '낫다'면 B, 둘 다 아니면 A.
 
 사용:
   python src/explore_decide.py B --base-dir <v6_check/평가 지문> --base-models <v6 pet1 seed 5개> \
@@ -38,6 +43,14 @@ DQN은 모델 파일 지문으로 골라 seed 5개를 묶는다. 계산은 표�
       --imitation-models <흉내만 낸 DQN 5개> --h1-dir … --h1-models … --v6-dir … --pred-dir <explore_pred/single/평가 지문> --out …
   python src/explore_decide.py TEACH12 --teach-dir <explore_teacher/network12/평가 지문> --teach-models … --imitation-models … \
       --base-dir <explore_12map/평가 지문> --base-models <B12 5개> --ref-dir <eval_12map/평가 지문> --pred-dir <explore_pred/network12/평가 지문> --out …
+  python src/explore_decide.py CEIL1 --ceil-dir <explore_ceiling/single/평가 지문> --check <explore_ceiling/check.json> \
+      --pred-dir <explore_pred/single/평가 지문> --v6-dir <v6_check/평가 지문> --h1-dir … --h1-models … --out <decision_CEIL1.json>
+  python src/explore_decide.py CEIL12 --ceil-dir <explore_ceiling/network12/평가 지문> --check … --pred-dir <explore_pred/network12/평가 지문> \
+      --ref-dir <eval_12map/평가 지문> --base-dir <explore_12map/평가 지문> --base-models <B12 5개> --out <decision_CEIL12.json>
+  python src/explore_decide.py CEIL --single-decision <decision_CEIL1.json> [--network-decision <decision_CEIL12.json>] --out <decision_CEIL.json>
+  python src/explore_decide.py CHOICE --choice-dir <explore_choice/single/eval/평가 지문> --mov-models <B 5개> --cho-models <C 5개> \
+      --h1-dir <explore_single/eval/평가 지문> --h1-models <H1 5개> --v6-dir <v6_check/평가 지문> --pred-dir <explore_pred/single/평가 지문> \
+      --out <decision_CHOICE.json>
 """
 from __future__ import annotations
 
@@ -410,6 +423,102 @@ def decide_teach_12(args) -> dict:
     out["safety_note"] = "석천사거리 안 충돌 없음" if not unsafe else f"석천사거리 안 충돌 있음 → 한계로 적고 재현으로 원인 확인: {unsafe}"
     return out
 
+
+# ------------------------------------------------------------------ 이동별 정보·고를 때만 묻기(114절)
+CHOICE_Q1 = {"낫다": "1. 이동별 정보가 성능에 기여했다.", "차이 없음": "1. 이 정보를 더한 것만으로는 부족했다.",
+             "못하다": "1. 정보를 더한 것이 해가 됐다."}
+CHOICE_Q2 = {"낫다": "2. 고를 때만 묻는 학습이 추가로 도움이 됐다.", "차이 없음": "2. 묶어 배우기의 추가 효과는 보이지 않는다.",
+             "못하다": "2. 묶어 배우기가 해가 됐다."}
+CHOICE_Q4 = {"낫다": "DQN이 단순 규칙을 넘었다", "차이 없음": "단순 규칙과 차이 없음", "못하다": "단순 규칙에 못 미친다"}
+
+
+def collapses(rows: list[dict], fixedc: list[dict]) -> int:
+    """114.4: 그날 보정 고정신호보다 지연이 긴 (날짜, 학습 seed) 실행 수."""
+    limit = {r["date"]: r["all"]["mean_delay_s"] for r in fixedc}
+    return sum(r["all"]["mean_delay_s"] > limit[r["date"]] for r in rows)
+
+
+def verdict_choice(x: dict, y: dict) -> dict:
+    """98.4의 말에 114.4 조건을 더한다: '낫다'는 무너진 실행 수도 Y보다 늘지 않아야 한다."""
+    v = verdict(x, y, DELAY_S, "mean_delay_s", "long_waits")
+    v["collapse_diff"] = x["collapses"] - y["collapses"]
+    if v["word"] == "낫다" and v["collapse_diff"] > 0:
+        v["word"] = "차이 없음"
+    return v
+
+
+def versus_same_info(x: dict, p0: dict) -> dict:
+    """114.4 질문 3: B·C는 P0의 정보를 모두 가진다."""
+    v = verdict_choice(x, p0)
+    d = v["delay_diff_s"]
+    v["same_info_word"] = ("같은 정보에서 강화학습이 계산형 제어를 넘었다" if v["word"] == "낫다" else
+                           "같은 정보의 계산형 제어에 못 미친다" if d >= DELAY_S else
+                           "같은 정보의 계산형 제어 수준이다" if abs(d) < DELAY_S else
+                           "지연은 문턱 이상 짧지만 다른 지표가 늘어 넘었다고 말할 수 없다")
+    return v
+
+
+def per_seed_delay(rows: list[dict]) -> dict:
+    out = {}
+    for s in sorted({r["train_seed"] for r in rows}):
+        rs = [r for r in rows if r["train_seed"] == s]
+        out[s] = round(sum(r["all"]["mean_delay_s"] * r["all"]["vehicles"] for r in rs) / sum(r["all"]["vehicles"] for r in rs), 2)
+    return out
+
+
+def _check_choice_models(models: list[str], experiment: str) -> list[dict]:
+    """explore.json으로 실험 이름을 확인하고, 학습 기록에서 함께 보고할 값을 모은다."""
+    out = []
+    for m in models:
+        rec = _read(Path(m) / "explore.json") if (Path(m) / "explore.json").exists() else {}
+        if rec.get("experiment") != experiment:
+            raise SystemExit(f"{m}: {experiment} 모델이 아니다({rec.get('experiment')}).")
+        cfg = _read(Path(m) / "training_config.json")
+        out.append({"model": Path(m).name, "observation_code": rec.get("observation_code"), "resumed": cfg.get("resumed"),
+                    "seconds": cfg.get("seconds_this_run"), **({"choice": cfg["choice"]} if "choice" in cfg else {})})
+    if len({r["observation_code"] for r in out}) != 1:
+        raise SystemExit(f"{experiment} 모델의 관측 코드가 섞였다: {sorted({r['observation_code'] for r in out})}")
+    return out
+
+
+def decide_choice(args) -> dict:
+    ch, v6, h1, pred = Path(args.choice_dir), Path(args.v6_dir), Path(args.h1_dir), Path(args.pred_dir)
+    training = {"B_mov": _check_choice_models(args.mov_models, "MOV"), "C_cho": _check_choice_models(args.cho_models, "CHO")}
+    if training["B_mov"][0]["observation_code"] != training["C_cho"][0]["observation_code"]:
+        raise SystemExit("B와 C의 관측 코드가 다르다(114.1: C는 B와 같은 관측).")
+    out = {"rule": "CHOICE", "threshold_s": DELAY_S, "dates": VALIDATION, "training": training}
+    for name, arrivals in (("validation_random", "random"), ("validation_platoon", "platoon")):
+        g = {"A_h1": _dqn_rows(h1 if arrivals == "random" else pred, VALIDATION, args.h1_models, arrivals),
+             "B_mov": _dqn_rows(ch, VALIDATION, args.mov_models, arrivals),
+             "C_cho": _dqn_rows(ch, VALIDATION, args.cho_models, arrivals),
+             "greedy": _single_rows(v6, VALIDATION, "greedy", arrivals), "fixedc": _single_rows(v6, VALIDATION, "fixedc", arrivals),
+             "P0": _single_rows(pred, VALIDATION, PRED_TAGS["p0"], arrivals)}
+        s = {k: {**summary(v), "collapses": collapses(v, g["fixedc"])} for k, v in g.items()}
+        sv = lambda a, b: verdict_choice(s[a], s[b])
+        c = {"1_B_vs_A": sv("B_mov", "A_h1"), "2_C_vs_B": sv("C_cho", "B_mov"),
+             "3_B_vs_P0": versus_same_info(s["B_mov"], s["P0"]), "3_C_vs_P0": versus_same_info(s["C_cho"], s["P0"]),
+             "4_B_vs_greedy": sv("B_mov", "greedy"), "4_C_vs_greedy": sv("C_cho", "greedy"), "extra_C_vs_A": sv("C_cho", "A_h1"),
+             "vs_fixedc": {k: versus_fixedc(s[k], s["fixedc"], "mean_delay_s") for k in ("A_h1", "B_mov", "C_cho")}}
+        out[name] = {"summary": s, "comparisons": c, "per_seed_delay": {k: per_seed_delay(g[k]) for k in ("A_h1", "B_mov", "C_cho")},
+                     "safety": {k: pet_counts(g[k]) for k in ("B_mov", "C_cho")}}
+    c = out["validation_random"]["comparisons"]
+    out["interpretation"] = [CHOICE_Q1[c["1_B_vs_A"]["word"]], CHOICE_Q2[c["2_C_vs_B"]["word"]],
+                             f"3. B: {c['3_B_vs_P0']['same_info_word']}. C: {c['3_C_vs_P0']['same_info_word']}.",
+                             f"4. B: {CHOICE_Q4[c['4_B_vs_greedy']['word']]}. C: {CHOICE_Q4[c['4_C_vs_greedy']['word']]}."]
+    out["note"] = ("해석은 둘 중 하나로 몰지 않는다: 1이 '낫다'여도 막힌 곳이 전부 정보였다는 뜻이 아니고, "
+                   "'차이 없음'이어도 학습 방식만 원인이라는 뜻이 아니다(114.4).")
+    out["base"] = "C" if c["2_C_vs_B"]["word"] == "낫다" else "B" if c["1_B_vs_A"]["word"] == "낫다" else "A"
+    out["next"] = (f"바탕 {out['base']}: 날짜 분할을 바꿔 A와 {out['base']}를 다시 학습해 개선이 유지되는지 본다(나누는 법은 실행 전에 "
+                   "따로 적음). 그다음 12개 지도에 같은 바탕 + 이웃 신호 정보(114.5)." if out["base"] != "A" else
+                   "바탕 A: 이동별 정보도, 고를 때만 묻기도 부족했다. 예비 경로('녹색 + 몇 초', 계산 결과를 관측으로)는 사용자와 정한다(114.5).")
+    unsafe = [f"{n}:{k}" for n in ("validation_random", "validation_platoon") for k, v in out[n]["safety"].items() if v["pet_below_0"] > 0]
+    unexplained = [f"{n}:{k}" for n in ("validation_random", "validation_platoon") for k in ("B_mov", "C_cho")
+                   if out[n]["summary"][k]["unexplained"]]
+    out["safety_note"] = ("PET < 0 없음" if not unsafe else f"PET < 0 있음 → 한계로 적고 재현으로 원인 확인: {unsafe}") + \
+                         ("; 확인 안 된 충돌 없음" if not unexplained else f"; 확인 안 된 충돌 있음 → 재현으로 원인 확인: {unexplained}")
+    return out
+
+
 def decide_b12(args) -> dict:
     base = windows12(Path(args.base_dir), dqn_tag(args.base_models))
     cand = windows12(Path(args.cand_dir), dqn_tag(args.cand_models))
@@ -497,9 +606,117 @@ def ablation(args) -> dict:
             "interpretation": {"cause": cause, "how_far": reach}, "note": "설정을 고르지 않는다(86절)."}
 
 
+# ------------------------------------------------------------------ 천장 재기(109절)
+CEIL_TAGS = {"L": "ceil_long", "O": "ceil_oracle"}
+Q_LONG = {"낫다": "1. 더 멀리 보면 줄어든다.", "차이 없음": "1. 더 멀리 봐도 줄지 않는다.",
+          "못하다": "1. 더 멀리 보면 오히려 길어진다(줄 모형이 멀리서 틀린다)."}
+
+
+def ceil_stats(rows: list[dict]) -> dict:
+    return pred_stats([{**r, "pred": r["ceil"]} for r in rows])
+
+
+def ceil_gate(diff: float | None, threshold: float) -> str:
+    """109.3 갈림길(지연만): L이 문턱 이상 짧음 'short', 문턱 안 'same', 문턱 이상 긺 'long', L 없음 'none'."""
+    if diff is None:
+        return "none"
+    return "short" if -diff >= threshold else "long" if diff >= threshold else "same"
+
+
+def _long_horizon(check_file: str) -> int | None:
+    c = _read(Path(check_file))
+    if not c.get("ok"):
+        raise SystemExit(f"{check_file}: 통과한 점검이 아닙니다.")
+    return c.get("long_horizon_s")
+
+
+def decide_ceil_single(args) -> dict:
+    split = json.loads((Path(__file__).resolve().parents[1] / "config/focused_split.json").read_text())
+    ceil, pred, v6, h1 = Path(args.ceil_dir), Path(args.pred_dir), Path(args.v6_dir), Path(args.h1_dir)
+    long_h = _long_horizon(args.check)
+    out = {"rule": "CEIL1", "threshold_s": DELAY_S, "long_horizon_s": long_h}
+
+    def groups(dates, arrivals, training=False):
+        g = {"fixedc": _single_rows(v6, dates, "fixedc", arrivals), "greedy": _single_rows(v6, dates, "greedy", arrivals),
+             "P0": _single_rows(pred, dates, PRED_TAGS["p0"], arrivals), "P1": _single_rows(pred, dates, PRED_TAGS["p1"], arrivals),
+             "O": _single_rows(ceil, dates, CEIL_TAGS["O"], arrivals)}
+        if long_h:
+            g["L"] = _single_rows(ceil, dates, CEIL_TAGS["L"], arrivals)
+        if not training:
+            g["dqn_h1"] = _dqn_rows(h1 if arrivals == "random" else pred, dates, args.h1_models, arrivals)
+        return g
+
+    for name, dates, arrivals, training in (("validation_random", VALIDATION, "random", False),
+                                            ("validation_platoon", VALIDATION, "platoon", False),
+                                            ("training13_random", split["train"], "random", True)):
+        g = groups(dates, arrivals, training)
+        s = {k: summary(v) for k, v in g.items()}
+        v1 = lambda a, b: verdict(s[a], s[b], DELAY_S, "mean_delay_s", "long_waits")
+        c = {"2_O_vs_P0": v1("O", "P0"), "2_O_vs_P1": v1("O", "P1")}
+        if long_h:
+            c["1_L_vs_P0"] = v1("L", "P0")
+        for p in [k for k in ("L", "O") if k in s and "dqn_h1" in s]:
+            c[f"extra_{p}_vs_dqn_h1"] = v1(p, "dqn_h1")
+        c["vs_fixedc"] = {p: versus_fixedc(s[p], s["fixedc"], "mean_delay_s") for p in ("P0", "P1", "L", "O") if p in s}
+        out[name] = {"dates": dates, "summary": s, "comparisons": c,
+                     "safety": {p: pet_counts(g[p]) for p in ("L", "O") if p in g},
+                     "ceil": {p: ceil_stats(g[p]) for p in ("L", "O") if p in g}}
+    main = out["validation_random"]["comparisons"]
+    out["interpretation"] = [Q_LONG[main["1_L_vs_P0"]["word"]] if long_h else "1. L을 잴 수 없었다(점검에서 계산이 너무 느림).",
+                             f"2. 더 알기: O가 P0보다 {main['2_O_vs_P0']['word']}, P1보다 {main['2_O_vs_P1']['word']}."]
+    if -main["2_O_vs_P0"]["delay_diff_s"] >= DELAY_S:
+        out["interpretation"].append("도착을 정확히 알면 줄어든다(그 길, 도착 예측 개선은 이 계획에 넣지 않는다).")
+    out["gate"] = ceil_gate(main["1_L_vs_P0"]["delay_diff_s"] if long_h else None, DELAY_S)
+    unsafe = [f"{n}:{p}" for n in ("validation_random", "validation_platoon", "training13_random")
+              for p, v in out[n]["safety"].items() if v["pet_below_0"] > 0]
+    out["safety_note"] = "PET < 0 없음" if not unsafe else f"PET < 0 있음 → 한계로 적고 재현으로 원인 확인: {unsafe}"
+    return out
+
+
+def decide_ceil_12(args) -> dict:
+    ceil, pred, ref = Path(args.ceil_dir), Path(args.pred_dir), Path(args.ref_dir)
+    long_h = _long_horizon(args.check)
+    if not long_h:
+        raise SystemExit("L을 잴 수 없었습니다(점검). CEIL12는 판정할 것이 없습니다.")
+    g = {"fixedc": windows12(ref, lambda s: "fixedc"), "greedy": windows12(ref, lambda s: "greedy"),
+         "dqn_b12": windows12(Path(args.base_dir), dqn_tag(args.base_models)),
+         "P0": windows12(pred, lambda s: PRED_TAGS["p0"]), "P2": windows12(pred, lambda s: PRED_TAGS["p2"]),
+         "L": windows12(ceil, lambda s: CEIL_TAGS["L"])}
+    s = {k: summary12(v) for k, v in g.items()}
+    v12 = lambda a, b: verdict(s[a], s[b], DELAY_12_S, "delay", "long")
+    c = {"1_L_vs_P0": v12("L", "P0"), "extra_L_vs_P2": v12("L", "P2"), "extra_L_vs_dqn_b12": v12("L", "dqn_b12")}
+    runs = [_read(w / f"{CEIL_TAGS['L']}_eval{sd}" / "metrics.json") for w in sorted((ceil / "windows").iterdir())
+            if w.name[:8] in VALIDATION for sd in SEEDS]
+    out = {"rule": "CEIL12", "threshold_s": DELAY_12_S, "long_horizon_s": long_h, "dates": VALIDATION, "all_windows": s,
+           "without_" + UNSTABLE_12: {k: summary12(v, UNSTABLE_12) for k, v in g.items()}, "comparisons": c,
+           "vs_fixedc": {p: versus_fixedc(s[p], s["fixedc"], "delay") for p in ("P0", "P2", "L")},
+           "safety": {"L": {"collisions_in_204820": sum(r["collisions_in_204820"] for r in runs)}},
+           "ceil": {"L": ceil_stats(runs)}, "interpretation": [Q_LONG[c["1_L_vs_P0"]["word"]]],
+           "gate": ceil_gate(c["1_L_vs_P0"]["delay_diff_s"], DELAY_12_S)}
+    n = out["safety"]["L"]["collisions_in_204820"]
+    out["safety_note"] = "석천사거리 안 충돌 없음" if not n else f"석천사거리 안 충돌 {n}건 → 한계로 적고 재현으로 원인 확인"
+    return out
+
+
+def decide_ceil(args) -> dict:
+    """109.3 갈림길: 두 판정의 gate를 합친다(12개 지도 판정이 없으면 'none')."""
+    single = _read(Path(args.single_decision))
+    network = _read(Path(args.network_decision)) if args.network_decision and Path(args.network_decision).exists() else None
+    gates = {"single": single["gate"], "network12": network["gate"] if network else "none"}
+    if "short" in gates.values():
+        step, text = "plan_step1", "2분 너머에 줄일 것이 있다 → 1단계(계획 + 학습) 계획을 적는다."
+    elif set(gates.values()) == {"same"}:
+        step, text = "stop", "더 멀리 봐도 줄지 않는다 → 1단계를 하지 않는다."
+    else:
+        step, text = "ask_user", "이 결과로 정하지 않고 사용자와 정한다(L이 문턱 이상 길거나 잴 수 없음)."
+    return {"rule": "CEIL", "gates": gates, "next": step, "interpretation": text,
+            "single": single["interpretation"], "network12": network["interpretation"] if network else None}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("rule", choices=("B", "C", "B12", "ABL", "COORD", "PRED1", "PRED12", "TEACH1", "TEACH12"))
+    ap.add_argument("rule", choices=("B", "C", "B12", "ABL", "COORD", "PRED1", "PRED12", "TEACH1", "TEACH12", "CEIL1", "CEIL12",
+                                     "CEIL", "CHOICE"))
     ap.add_argument("--base-dir")
     ap.add_argument("--base-models", nargs=5)
     ap.add_argument("--cand-dir")
@@ -517,8 +734,36 @@ def main() -> None:
     ap.add_argument("--teach-dir", help="TEACH1·TEACH12: 선생님 DQN 평가 결과(explore_teacher/…/평가 지문)")
     ap.add_argument("--teach-models", nargs=5, help="TEACH: 선생님 DQN seed 5개")
     ap.add_argument("--imitation-models", nargs=5, help="TEACH: 흉내만 낸 DQN seed 5개(선생님 DQN 폴더의 imitation)")
+    ap.add_argument("--ceil-dir", help="CEIL1·CEIL12: 천장 재기 결과 폴더(explore_ceiling/…/평가 지문)")
+    ap.add_argument("--check", help="CEIL1·CEIL12: 천장 재기 점검(check.json, L 계산 길이)")
+    ap.add_argument("--single-decision", help="CEIL: decision_CEIL1.json")
+    ap.add_argument("--network-decision", help="CEIL: decision_CEIL12.json(L을 잴 수 없었으면 없음)")
+    ap.add_argument("--choice-dir", help="CHOICE: B·C 평가 결과 폴더(explore_choice/single/eval/평가 지문)")
+    ap.add_argument("--mov-models", nargs=5, help="CHOICE: B(이동별 정보) seed 5개")
+    ap.add_argument("--cho-models", nargs=5, help="CHOICE: C(고를 때만 묻기) seed 5개")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
+    if args.rule == "CHOICE":
+        missing = [n for n in ("choice_dir", "mov_models", "cho_models", "h1_dir", "h1_models", "v6_dir", "pred_dir")
+                   if not getattr(args, n)]
+        if missing:
+            ap.error(f"CHOICE에 필요한 인자: {missing}")
+        result = decide_choice(args)
+        Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=1))
+        print(json.dumps({k: result[k] for k in ("interpretation", "base", "next", "safety_note")}, ensure_ascii=False, indent=1))
+        return
+    if args.rule in ("CEIL1", "CEIL12", "CEIL"):
+        need = {"CEIL1": ["ceil_dir", "check", "pred_dir", "v6_dir", "h1_dir", "h1_models"],
+                "CEIL12": ["ceil_dir", "check", "pred_dir", "ref_dir", "base_dir", "base_models"],
+                "CEIL": ["single_decision"]}[args.rule]
+        missing = [n for n in need if not getattr(args, n)]
+        if missing:
+            ap.error(f"{args.rule}에 필요한 인자: {missing}")
+        result = {"CEIL1": decide_ceil_single, "CEIL12": decide_ceil_12, "CEIL": decide_ceil}[args.rule](args)
+        Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=1))
+        keys = ("gates", "next", "interpretation") if args.rule == "CEIL" else ("interpretation", "gate", "safety_note")
+        print(json.dumps({k: result[k] for k in keys}, ensure_ascii=False, indent=1))
+        return
     if args.rule == "ABL":
         result = ablation(args)
         Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=1))

@@ -22,6 +22,7 @@ data/processed/
 AIHub자료/
 Colab Pro + 영수증/
 연구노트/
+보고서/
 
 # 인증 정보
 client_secret_*.json

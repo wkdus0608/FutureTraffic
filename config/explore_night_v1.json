@@ -1,0 +1,46 @@
+{
+  "experiment": "WEIGHT1_NIGHT",
+  "description": "밤샘 묶음: (N1) 탐색 제어 6쌍에서 M4와 비교, (N2) M4 주변 고정 가중치, (N3) M4에서 출발하는 듀얼링 모드 DQN 3시드. 모두 추가 개발 평가이며 확인 평가가 아니다.",
+  "environment": {"fingerprint": "b20888514ea3", "rule_set": "pet1", "north_extension_m": 240, "p0_code": "9440fe1d3869"},
+  "parent": {"folder": "explore_weight_resume_v1", "reference_runs": "runs/development_references", "budget_file": "budget.json"},
+  "budget": {"total_cap_s": 345600, "night_cap_s": 108000, "wall_hours": 12, "stop_margin_s": 900,
+             "note": "전체 96작업시간 한도 중 이번 밤샘 상한 30작업시간. 병렬 작업 시간은 합산한다."},
+  "n1_search_pairs": {
+    "pairs": [["20220822", "1300", 42], ["20220822", "1300", 43], ["20220906", "1800", 42],
+              ["20220906", "1800", 43], ["20220907", "1300", 42], ["20220907", "1300", 43]],
+    "stored": {
+      "p0": {"20220822_1300_s42": 37.752, "20220822_1300_s43": 38.647, "20220906_1800_s42": 42.03,
+             "20220906_1800_s43": 43.065, "20220907_1300_s42": 42.767, "20220907_1300_s43": 41.435},
+      "search": {"20220822_1300_s42": 37.179, "20220822_1300_s43": 36.085, "20220906_1800_s42": 41.924,
+                 "20220906_1800_s43": 42.865, "20220907_1300_s42": 40.142, "20220907_1300_s43": 40.352}},
+    "reproduction_tolerance_s": 0.01,
+    "headroom_min_s": 0.5,
+    "rule": "(탐색 이득 − M4 이득)의 6쌍 평균이 0.5초 이상이면 '이 틀에서 M4 위의 여지 단서', 그보다 작으면 '여지 근거를 못 얻음'. 쌍 6개의 평균이라 큰 차이만 가릴 수 있다."
+  },
+  "n2_static_sweep": {
+    "factors": [[2.5, 2.5], [3.0, 3.0], [4.0, 4.0], [3.0, 2.0], [2.0, 3.0]],
+    "factor_order": ["left_east", "left_south"],
+    "development": {"dates": ["20220811", "20220823"], "periods": ["1300", "1800"], "eval_seeds": [42, 43, 44, 45]},
+    "reproduction_checks": [["20220811", "1300", 42], ["20220823", "1800", 45]],
+    "worth_confirming_s": 0.3,
+    "rule": "개발 16조건 평균이 M4보다 0.3초 이상 짧은 가중치는 '확인 평가를 해 볼 만한 단서', 그 밖은 'M4가 이 격자에서 충분히 좋음'. 개발 평가에서 고른 것이므로 확인 전에는 성능 주장에 쓰지 않는다."
+  },
+  "n3_learner": {
+    "name": "M4-start dueling mode DQN",
+    "seeds": [42, 43, 44],
+    "stages": [42, 139],
+    "network": [64, 64],
+    "dueling_baseline": "Q(s,m)=V(s)+A(s,m)-A(s,b(s)); b(s)=M4와 같은 첫 신호의 가장 작은 유효 모드; V·A 출력층 0 초기화",
+    "gamma": 0.99, "n_steps": 10, "learning_rate": 0.001, "buffer_size": 100000, "batch_size": 64,
+    "learning_starts": 1000, "train_freq": 4, "target_update_interval": 5000,
+    "choice_share": 0.25,
+    "epsilon_start": 0.5, "epsilon_end": 0.2, "epsilon_decay_steps": 20000,
+    "max_discarded_episodes_per_seed": 5,
+    "verdict_margin_s": 0.3, "min_seeds_better": 2,
+    "baseline_dev_means": {"p0_16": 39.429076, "m4_16": 38.49067, "m4_seeds_42_43": 38.456619,
+                           "weight1_ep42_seeds_42_43": 38.785453, "weight1_ep139_seeds_42_43": 38.50369,
+                           "weight1_ep417_16": 38.404408, "weight1_ep417_seeds_42_43": 38.280945},
+    "rule": "139에피소드 모델 3개를 개발 16조건에서 평가한다. 평균이 M4보다 0.3초 이상 짧고 3개 중 2개 이상이 M4보다 짧으면 'M4 초과 단서', M4 ±0.3초 안이면 'M4 수준', 0.3초 넘게 길면 'M4보다 나쁨'. 학습 seed 3개의 개발 평가이므로 확인 전에는 성능 주장에 쓰지 않는다."
+  },
+  "inference": "고정 수요 조건, 반복 사용한 날짜의 추가 개발 평가. 새 날짜/실제 도로 일반화 주장 없음. 결과를 보고 규칙·조건·seed를 바꾸지 않는다."
+}

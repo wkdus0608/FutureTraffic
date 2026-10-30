@@ -1,0 +1,46 @@
+{
+  "experiment": "ARENA3_STAGE2_V1",
+  "base_lock_sha256": "3b0d5f9ee576bb8e03b48a88ad09067fa03599564b4b2ce6927a2666d5f77b43",
+  "variants": {"advantage": "S2A", "policy": "S2B"},
+  "description": "동일 B′ 교사 자료의 이득 회귀와 비용 가중 선택 모방을 각각 사전학습한 뒤 같은 SMDP RL로 미세조정한다.",
+  "data": {
+    "source": "arena3/bprime_data",
+    "expected_episodes": 64,
+    "exclude_restore_mismatch": true,
+    "minimum_paired_futures": 4,
+    "future_split": "앞 절반으로 진단용 교사 선택, 뒤 절반으로 오프라인 채점. 전체 사전학습에는 모든 유효 미래 사용.",
+    "privileged_targets_only": true,
+    "online_observation_size": 119
+  },
+  "pretrain": {
+    "epochs": 200,
+    "batch_size": 64,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "temperature": 0.25,
+    "se_multiplier": 1.0
+  },
+  "finetune": {
+    "teacher_weight": 0.2,
+    "teacher_decay_choices": null,
+    "teacher_schedule": "학습 끝까지 같은 무게(DQfD식). 6,000선택 감소안은 난수당 약 12,500선택 중 뒤 절반을 교사 없는 TD로 남기는데, 같은 TD만 쓴 G1은 M4 수준(+0.07초)에 그쳤다(212절).",
+    "base_rl": "config/arena3_v1.json:g1",
+    "budget_includes_pretraining": true
+  },
+  "offline": {
+    "split": "leave_one_training_date_out",
+    "seed": 42,
+    "variants": ["advantage", "policy"],
+    "advisory_only": true,
+    "note": "오프라인 예측 실패는 RL 불가능의 증명이 아니며, 성공도 60분 연속 제어의 성공을 증명하지 않는다."
+  },
+  "evaluation": {
+    "compare_pretrained_and_final": true,
+    "reused_eval_situations": 84,
+    "confirmation_situations": 84,
+    "judge": "config/arena3_v1.json:judge",
+    "winner": "통과한 최종 RL 학습기만 주 지표 최대로 고정하고 C1/C2에서 한 번 확인한다.",
+    "offline_models_are_not_rl_success": true
+  },
+  "reporting": "반복 사용 날짜의 SUMO 개발 비교. 새 날짜·실제 도로 일반화는 미검증."
+}

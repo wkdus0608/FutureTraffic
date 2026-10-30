@@ -1,0 +1,15 @@
+{
+  "experiment": "WEIGHT1_LONG",
+  "description": "같은 가중치 모드 RL의 학습량 비교; 원래 WEIGHT1 pilot 판정은 보존",
+  "train_seeds": [42, 43, 44],
+  "chunk_episodes": 42,
+  "profiles": {
+    "two_cpu": {"minimum_cpus": 2, "milestones": [42, 139, 278], "primary_episodes": 278},
+    "three_cpu": {"minimum_cpus": 3, "milestones": [42, 139, 278, 417], "primary_episodes": 417}
+  },
+  "development": {"dates": ["20220811", "20220823"], "periods": ["1300", "1800"], "interim_seeds": [42, 43], "primary_seeds": [42, 43, 44, 45]},
+  "confirmation": {"dates": ["20220928", "20220813"], "periods": ["0730", "1230", "1730", "2130"], "eval_seeds": [1042, 1043, 1044, 1045, 1046, 1047, 1048, 1049]},
+  "gate": {"development_positive_models": 2, "development_positive_groups": 3, "confirmation_positive_models": 3, "confirmation_positive_groups": 6, "left_tolerance_s": 5, "bootstrap_repeats": 10000, "bootstrap_seed": 20261026},
+  "budget": {"wall_hours_per_invocation": 24, "compute_hours_total": 96, "prior_local_seconds": 3059.5260868037585, "forecast_margin": 1.25, "episode_seconds_estimate": 115.787, "evaluation_seconds_estimate": 140.922},
+  "inference": "반복 사용된 날짜·고정 수요 조건의 추가 개발 확인 평가. 새 날짜/실제 도로 일반화 아님. 중간 최고 모델 선택 금지."
+}
