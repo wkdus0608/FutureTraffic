@@ -1,0 +1,60 @@
+{
+ "experiment": "LABEL0_V1",
+ "design": "PROJECT_PROGRESS.md 253절, results/explore/label0_20261102/사전등록.md",
+ "prereg": "results/explore/label0_20261102/사전등록.md",
+ "prereg_sha256": "a02623b095ac9d6ccf017b16bf3a4a9dc6730dc915da284b25ecb4344ab1d9d0",
+ "lock_sha256": "3b0d5f9ee576bb8e03b48a88ad09067fa03599564b4b2ce6927a2666d5f77b43",
+ "platoon1_config_sha256": "4d23a22f545d250d91ece3a59a89b7a7597e32e70fb4424114eddd93a2718ce3",
+ "pi_config_sha256": "93e055454252c8c1ddb7874660586ebf66ed1856c212dcb9198ac566dd29af16",
+ "method": "자료에 저장된 지연·끝 순간 멈춘 차로 라벨을 다시 계산하고 같은 설정으로 학생을 다시 학습한다. 새 굴림 없음.",
+ "label": "비용 = 300초 지연 + w × 300초째 멈춘 차 수. 지금 라벨은 w = 75.",
+ "weights": {
+  "w0": 0.0,
+  "w25": 25.0
+ },
+ "variants": {
+  "P_w0": {
+   "world": "P",
+   "weight": 0.0,
+   "data": "PLATOON1",
+   "student_of": "PT1"
+  },
+  "P_w25": {
+   "world": "P",
+   "weight": 25.0,
+   "data": "PLATOON1",
+   "student_of": "PT1"
+  },
+  "R_w0": {
+   "world": "R",
+   "weight": 0.0,
+   "data": "PI R1",
+   "student_of": "R1A",
+   "action": "A"
+  },
+  "R_w25": {
+   "world": "R",
+   "weight": 25.0,
+   "data": "PI R1",
+   "student_of": "R1A",
+   "action": "A"
+  }
+ },
+ "evaluation": {
+  "situations": 84,
+  "models": 3,
+  "runs_per_variant": 252,
+  "total_runs": 1008,
+  "confirmation": "쓰지 않음"
+ },
+ "rules": {
+  "main": "Δ = 후보 − 같은 세계 무게 75 학생. 효과 있음 = 날짜 평균 ≥ 0.3초, t95 하한 > 0, 양수 날짜 ≥ 5.",
+  "effect_min_gain_s": 0.3,
+  "effect_min_positive_dates": 5,
+  "reading": {
+   "A": "두 세계 모두 같은 무게에서 효과 있음",
+   "B": "한 세계에서만 효과 있음",
+   "C": "효과 없음"
+  }
+ }
+}

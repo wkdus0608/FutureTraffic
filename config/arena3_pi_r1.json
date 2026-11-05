@@ -1,0 +1,632 @@
+{
+  "experiment": "ARENA3_PI_R1",
+  "round": "R1",
+  "base_lock_sha256": "3b0d5f9ee576bb8e03b48a88ad09067fa03599564b4b2ce6927a2666d5f77b43",
+  "stage2_config_sha256": "e6474c79859f98f8aaf252a666877ed642ab7b2b0dde9c4a8ee6d1d41c33fae9",
+  "design": "PROJECT_PROGRESS.md 235·236절, docs/ARENA3_PI_실행안내.md",
+  "method": "롤아웃 분류 정책 반복(Lagoudakis·Parr 2003 RCPI, Lazaric 외 DPI 계열 강화학습). 지금 정책이 운전하는 학습 상황에서 결정 지점마다 허용 녹색을 같은 표본 미래로 굴려 비교하고(정책 평가), 관측만 보는 신경망이 더 나은 녹색을 배운다(정책 개선). 다음 라운드는 그 신경망이 지금 정책이다.",
+  "base_policy": {
+    "name": "S2A_pre_42",
+    "kind": "mode",
+    "variant": null,
+    "stage2_variant": "advantage",
+    "stage": "pretrained",
+    "seed": 42,
+    "root": "arena3/stage2/S2A_train",
+    "folder": "seed_42/pretrained",
+    "model_sha256": "1150ce509c9f9baed0318733f524169b08920a8a654f6aa69bfac259b0f256ad",
+    "why": "개발 판정을 통과한 학습 모델 중 날짜 평균이 가장 큰 S2A_pre(+0.599초)의 첫 난수. 난수는 성적이 아닌 순서 규칙으로 골랐다(난수별 +0.538·+0.680·+0.577초)."
+  },
+  "situations": {
+    "per_date": 8,
+    "slot_salt": "ARENA3_PI_R1_SLOTS",
+    "tag_prefix": "R1T",
+    "count": 64,
+    "note": "학습 8일 × 날짜마다 15분 칸 8개(해시 순서), 새 도착 배치(B′ 자료 T1~T64와 다름)"
+  },
+  "decision_points": {
+    "choice": "여섯 모드의 첫 녹색이 갈리는 곳(시간당 약 29곳, M4·S2A_pre 84판 실측): 모두 굴린다",
+    "agree": "허용 녹색이 2개 이상이고 여섯 모드가 같은 곳(시간당 약 59곳): 해시 규칙으로 일부만 굴린다",
+    "forced": "허용 녹색이 하나인 곳(시간당 약 632곳): 고를 것이 없다",
+    "candidates": "그 순간 허용된 녹색 전부(갈림 평균 3.9개, 합의 평균 3.4개)"
+  },
+  "agree_sample": {
+    "fraction": 0.25,
+    "salt": "ARENA3_PI_R1_AGREE"
+  },
+  "rollout": {
+    "horizon_s": 300,
+    "first_action_s": 5,
+    "terminal_s": 75.0,
+    "history_s": 900,
+    "futures": 8,
+    "future_salt": "PI_R1_FUTURE",
+    "min_valid_futures": 4,
+    "continuation": "첫 5초 후보 녹색 → 지금 정책(평가 때와 같은 선택) → 제어 60분이 끝나면 P0(본 에피소드와 같음)",
+    "cost": "300초 지연(시간 손실 + 진입 대기) + 남은 정체 × 75초(B′와 같음)",
+    "drop_future": "어느 후보에서든 미확인 충돌·204820 충돌이 난 미래는 모든 후보에서 뺀다",
+    "restore_check": {
+      "tolerance": 1e-06,
+      "max_mismatch_rate": 0.08,
+      "min_points": 200,
+      "scope": "모든 조각을 합해서(조각마다 세면 우연히 넘는다, 210절)",
+      "use": "불일치 지점은 학습에서 뺀다"
+    },
+    "max_failed_rollout_fraction": 0.02,
+    "failed_rollout": "실패한 롤아웃이 판의 2%(최소 3개) 이하이면 그 칸을 비우고(그 미래를 모든 후보에서 뺀다) 오류를 적는다. 넘으면 판 실패",
+    "keep_state_fraction": 0.05,
+    "max_backlog_jobs": 1500,
+    "main_episode_max_seconds": 10800
+  },
+  "data_quality": "본 에피소드에 미확인 충돌·204820 충돌이 있으면 그 판의 지점은 모두 학습에서 뺀다(기록). 규칙 변경·행동 오류·P0 불일치·지연 재구성 실패는 멈춘다.",
+  "student": {
+    "seeds": [
+      42,
+      43,
+      44
+    ],
+    "network": [
+      64,
+      64
+    ],
+    "outputs": "녹색 4개의 M4 녹색 대비 값(M4 = 0)",
+    "target": "mean",
+    "target_note": "짝 평균 이득(차량·초 ÷ 1000), 교사 규칙 c=0(225절: c=1보다 대리 비용 +22%, 8/8일)",
+    "loss": "S2A와 같은 신뢰 가중 Huber, 가중 = clamp(|이득| / (표준오차 + 0.1), 0.25, 4), 허용 녹색 중 M4가 아닌 것",
+    "confidence_floor": 0.1,
+    "confidence_clip": [
+      0.25,
+      4.0
+    ],
+    "epochs": 200,
+    "batch_size": 64,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "grad_clip": 10.0,
+    "init": "이점 머리 0(학습 전 탐욕 = M4)",
+    "greedy": "가장 큰 값, 같으면 M4 녹색"
+  },
+  "variants": {
+    "M": {
+      "name": "R1M",
+      "means": "갈림 지점에서 모드가 내는 녹색만(지금 행동 범위 안의 정책 반복)"
+    },
+    "G": {
+      "name": "R1G",
+      "means": "갈림 지점에서 허용 녹색 전부(새 행동), 합의 지점은 M4"
+    },
+    "A": {
+      "name": "R1A",
+      "means": "갈림·합의 지점 모두에서 허용 녹색 전부"
+    }
+  },
+  "offline": {
+    "status": "참고 진단(판정·선택에 쓰지 않음)",
+    "folds": "날짜 하나씩 보류, 미래 앞 절반으로 학습·뒤 절반으로 채점",
+    "targets": [
+      "mean",
+      "risk"
+    ],
+    "risk": "이득 − 표준오차(S2A 방식), 진단용"
+  },
+  "evaluation": {
+    "part": "eval",
+    "situations": 84,
+    "models": 3,
+    "judge": "config/arena3_v1.json:judge (그대로)",
+    "baseline": "arena3/referee/baseline",
+    "confirmation_baseline": "arena3/stage2/confirm/baseline"
+  },
+  "rules": {
+    "main": "M4 대비 ARENA3 판정 그대로(날짜 평균 ≥ 0.3초, t95 하한 > 0, 양수 날짜 ≥ 5, 좌회전 +5초 이내, 300초 초과 ≤ M4, 정책 고유 충돌 0, 품질 오류 0).",
+    "paired": "같은 84상황에서 날짜별 M4 대비 이득(차량 가중)의 차, 날짜 7개 평균과 t95(자유도 6).",
+    "pi_gain": "R1M − S2A_pre의 t95 하한 > 0 이면 '지금 행동 범위에서 정책 반복 1라운드가 출발 정책보다 짧다'.",
+    "new_action": "R1G − R1M의 t95 하한 > 0 이면 '갈림 지점에서 모드 밖 녹색까지 고르면 더 짧다', 상한 < 0 이면 '더 길다', 아니면 '구분 못 함'.",
+    "agree_action": "R1A − R1G에 같은 읽기(합의 지점에서도 고르는 몫).",
+    "winner": "R1M·R1G·R1A 가운데 main을 통과한 것 중 날짜 평균이 큰 하나만 C1·C2 84상황에서 한 번 확인(기준선은 2단계 확인 기준선 재사용). 통과한 것이 없으면 확인하지 않는다.",
+    "next_round": "다음 라운드의 지금 정책은 확인까지 통과한 승자의 난수 42 모델(같은 변형). 통과가 없으면 다음 라운드 설계는 결과를 본 뒤 정한다.",
+    "paired_comparisons": [
+      [
+        "R1M",
+        "S2A_pre"
+      ],
+      [
+        "R1G",
+        "S2A_pre"
+      ],
+      [
+        "R1A",
+        "S2A_pre"
+      ],
+      [
+        "R1G",
+        "R1M"
+      ],
+      [
+        "R1A",
+        "R1G"
+      ],
+      [
+        "R1M",
+        "S2B"
+      ],
+      [
+        "R1G",
+        "S2B"
+      ],
+      [
+        "R1A",
+        "S2B"
+      ],
+      [
+        "R1M",
+        "BPRIME"
+      ],
+      [
+        "R1G",
+        "BPRIME"
+      ],
+      [
+        "R1A",
+        "BPRIME"
+      ]
+    ],
+    "confirmation_paired": [
+      [
+        "winner",
+        "S2B"
+      ]
+    ]
+  },
+  "reporting": "반복 사용 날짜의 SUMO 개발 비교. C1·C2는 같은 7일의 새 도착 배치이며 새 날짜·실제 도로 일반화는 미검증. 최종 제어기는 신경망만(실행 때 탐색 없음). 롤아웃으로 직접 고르는 제어는 '탐색 제어'로 따로 부른다.",
+  "situations_data": [
+    {
+      "date": "20220812",
+      "period": "0730",
+      "tag": "R1T1",
+      "sumo_seed": 763296342,
+      "route_sha256": "bc06ad69e04199f052569421bb22b6e66bc45003f57785f4c773735882417bdf"
+    },
+    {
+      "date": "20220812",
+      "period": "0815",
+      "tag": "R1T2",
+      "sumo_seed": 889229231,
+      "route_sha256": "8d89bdcec5b2c748c322c07aa513ce69e85ef842af00027db81d72ee4f12d2eb"
+    },
+    {
+      "date": "20220812",
+      "period": "1100",
+      "tag": "R1T3",
+      "sumo_seed": 1708161153,
+      "route_sha256": "e52fea8f02609cf28b1f303525edd44d3c2ca43ca2cc1370a1dffa1e345bf8ef"
+    },
+    {
+      "date": "20220812",
+      "period": "1215",
+      "tag": "R1T4",
+      "sumo_seed": 931577322,
+      "route_sha256": "94922c23e2854fa67f7fa6a441f72e5be82afb65b8a5a11a9f9a7e120995d008"
+    },
+    {
+      "date": "20220812",
+      "period": "1415",
+      "tag": "R1T5",
+      "sumo_seed": 2099329766,
+      "route_sha256": "1554ef4b2dbe92740b13458631f00da350705f38be1696f84397897d4f8a81dd"
+    },
+    {
+      "date": "20220812",
+      "period": "1745",
+      "tag": "R1T6",
+      "sumo_seed": 649278624,
+      "route_sha256": "92703f7f48d3bf56723fbd9a4dc7627c8e70fdbff5807323a74fc1994b624fdd"
+    },
+    {
+      "date": "20220812",
+      "period": "1800",
+      "tag": "R1T7",
+      "sumo_seed": 968376382,
+      "route_sha256": "03220e5d3df3c92ad377253126d1e7e7cf2b58bdc804963beb897ca69a7503eb"
+    },
+    {
+      "date": "20220812",
+      "period": "2115",
+      "tag": "R1T8",
+      "sumo_seed": 69726252,
+      "route_sha256": "d84e1a09e53cc63851fe47899abcb2823d10389dc861dd481685a01ad33cd875"
+    },
+    {
+      "date": "20220822",
+      "period": "0730",
+      "tag": "R1T9",
+      "sumo_seed": 324054450,
+      "route_sha256": "6094bd5517561aa78cc9af898cd0e1fec4e11bd1f92942b4bcc10be9459fce08"
+    },
+    {
+      "date": "20220822",
+      "period": "1015",
+      "tag": "R1T10",
+      "sumo_seed": 1533899803,
+      "route_sha256": "c050f3926c0e272a763b4fd99a43dfa97e53d1bc9d8fd4138dfc08c02c3fcaaf"
+    },
+    {
+      "date": "20220822",
+      "period": "1115",
+      "tag": "R1T11",
+      "sumo_seed": 1455303612,
+      "route_sha256": "efde5d47f347dcd62240f95bec87c933d1b77dd8db40283ceeb8ae5b03aa9ae9"
+    },
+    {
+      "date": "20220822",
+      "period": "1345",
+      "tag": "R1T12",
+      "sumo_seed": 879593018,
+      "route_sha256": "2e6b17d4f7eecd2e093de709372bcfc5c4ba9b4f0513a4937ace12f7a738006b"
+    },
+    {
+      "date": "20220822",
+      "period": "1400",
+      "tag": "R1T13",
+      "sumo_seed": 1228702992,
+      "route_sha256": "cd834bc9324bea3d6e4f542c17bb3f58557066dbe46fe5271743df5af10ff3ad"
+    },
+    {
+      "date": "20220822",
+      "period": "1430",
+      "tag": "R1T14",
+      "sumo_seed": 27291338,
+      "route_sha256": "cc7cadc84b1bb46a06af855f1077d6c3b4e32e0b07200a0680d0cfd977a87231"
+    },
+    {
+      "date": "20220822",
+      "period": "1530",
+      "tag": "R1T15",
+      "sumo_seed": 42135749,
+      "route_sha256": "afdf963ef722c4b6326a7cb1707ee1acb0c66244e6594a838ce14adf891404a6"
+    },
+    {
+      "date": "20220822",
+      "period": "1930",
+      "tag": "R1T16",
+      "sumo_seed": 731873026,
+      "route_sha256": "9cc64aef464e580302a71b38d47d53fc5867982da604d85b274dff1b7875f5f6"
+    },
+    {
+      "date": "20220907",
+      "period": "0715",
+      "tag": "R1T17",
+      "sumo_seed": 1083569387,
+      "route_sha256": "3591b5b0649109968888651924a424931cc93cb36b732b335bbd8cf413b5872b"
+    },
+    {
+      "date": "20220907",
+      "period": "0930",
+      "tag": "R1T18",
+      "sumo_seed": 1712964464,
+      "route_sha256": "5a9ef016c5e311c0fed9cd6f3811425737901cc508ab46eab8ba7574e6ced087"
+    },
+    {
+      "date": "20220907",
+      "period": "1115",
+      "tag": "R1T19",
+      "sumo_seed": 1852995010,
+      "route_sha256": "ced6db136eeae89c54ec4a0bacc75675652dbd532e6b1cffbbcf3a7575acded7"
+    },
+    {
+      "date": "20220907",
+      "period": "1315",
+      "tag": "R1T20",
+      "sumo_seed": 352288055,
+      "route_sha256": "b916f68dfeb99d064c977a305a0883f730907581b3d8142ab3d130ccfdef14cc"
+    },
+    {
+      "date": "20220907",
+      "period": "1400",
+      "tag": "R1T21",
+      "sumo_seed": 436632247,
+      "route_sha256": "232a9c1f6e8c6c0a2377d9483bbf47c4481fbe3f9904db08d8b671a19724a52a"
+    },
+    {
+      "date": "20220907",
+      "period": "1415",
+      "tag": "R1T22",
+      "sumo_seed": 274112288,
+      "route_sha256": "137897ee1c09c2f3857de4a38e94788f7d0d2d4593bd265778c0b5601e105984"
+    },
+    {
+      "date": "20220907",
+      "period": "1530",
+      "tag": "R1T23",
+      "sumo_seed": 663114461,
+      "route_sha256": "0b4926b4df122db56902beb9bd926f4d81494c89144d5b0b8e3d40426e8bb120"
+    },
+    {
+      "date": "20220907",
+      "period": "1830",
+      "tag": "R1T24",
+      "sumo_seed": 473466255,
+      "route_sha256": "f57397bc9022b7a08a04ca7d214424b0dc90f48d792f209d514fed229a305b21"
+    },
+    {
+      "date": "20220926",
+      "period": "0630",
+      "tag": "R1T25",
+      "sumo_seed": 588284224,
+      "route_sha256": "f8498bd45d20c1e46193c02bd161f6688955eb3771e1827a4778227dbb6e8610"
+    },
+    {
+      "date": "20220926",
+      "period": "0845",
+      "tag": "R1T26",
+      "sumo_seed": 1367281597,
+      "route_sha256": "6d8c727e4fc7da16b2fab688329501aa6a62942ea43b469909e07c54f32e2857"
+    },
+    {
+      "date": "20220926",
+      "period": "0900",
+      "tag": "R1T27",
+      "sumo_seed": 551675952,
+      "route_sha256": "e3e536c318a01ae0144634f0f39ccfd95f6d18e52d06cb7fc0e87b6be48728db"
+    },
+    {
+      "date": "20220926",
+      "period": "1245",
+      "tag": "R1T28",
+      "sumo_seed": 1592609377,
+      "route_sha256": "8eef51cf7a45bfe766f7335a4e10dba06a3298114e77ae05528090870b1b3368"
+    },
+    {
+      "date": "20220926",
+      "period": "1315",
+      "tag": "R1T29",
+      "sumo_seed": 334118853,
+      "route_sha256": "f909ab91329ce488d571b76c99421dfeee37b3749adbeb7ee2577c58800a24bd"
+    },
+    {
+      "date": "20220926",
+      "period": "1500",
+      "tag": "R1T30",
+      "sumo_seed": 331497441,
+      "route_sha256": "2660c6d322aedf49b998289cc70defb30afc8ae858fec222f2a6fcf629e6792f"
+    },
+    {
+      "date": "20220926",
+      "period": "1730",
+      "tag": "R1T31",
+      "sumo_seed": 1781953629,
+      "route_sha256": "bc42f77298626f414f094a990da6a04aec566a1b33eb948a0b9ba547b2224be5"
+    },
+    {
+      "date": "20220926",
+      "period": "1800",
+      "tag": "R1T32",
+      "sumo_seed": 1578634103,
+      "route_sha256": "518698e97a5ec73c41aeb35347861bfb12542d8b3334b08114606520c76b658c"
+    },
+    {
+      "date": "20220928",
+      "period": "0600",
+      "tag": "R1T33",
+      "sumo_seed": 199495902,
+      "route_sha256": "1bf40fbc264d5927ea9629fdba30010fe740695c0475b6272eb8eb887db5f01b"
+    },
+    {
+      "date": "20220928",
+      "period": "0845",
+      "tag": "R1T34",
+      "sumo_seed": 2005857516,
+      "route_sha256": "abccad9651a64fcbf93c5980407c937012b3a84bf1cb477ef03ba528e39a7938"
+    },
+    {
+      "date": "20220928",
+      "period": "1315",
+      "tag": "R1T35",
+      "sumo_seed": 1598589475,
+      "route_sha256": "025ace5f9b9329ee48376e92bed85500c23c2c879d72c0859102997b1acf72ad"
+    },
+    {
+      "date": "20220928",
+      "period": "1500",
+      "tag": "R1T36",
+      "sumo_seed": 1532934788,
+      "route_sha256": "b91c0d2ba480de90939d1f39bdb2d6cd2c48af9cf1b223604458bb144b9a3d92"
+    },
+    {
+      "date": "20220928",
+      "period": "1530",
+      "tag": "R1T37",
+      "sumo_seed": 40518524,
+      "route_sha256": "a60c0df69c3026521ea231fe13f0eebe87698a41d30f5a6f643eb0b2297a3d95"
+    },
+    {
+      "date": "20220928",
+      "period": "1630",
+      "tag": "R1T38",
+      "sumo_seed": 2008503730,
+      "route_sha256": "4a700ee33de5069675f1f8f7067b3e46d4eb7113528d16fc2aa3960aa75ba4fa"
+    },
+    {
+      "date": "20220928",
+      "period": "1730",
+      "tag": "R1T39",
+      "sumo_seed": 3732601,
+      "route_sha256": "ab8d8dd1b3078a6af57da66e79598e035cb9a215cd34d1290a073d96992496b3"
+    },
+    {
+      "date": "20220928",
+      "period": "1745",
+      "tag": "R1T40",
+      "sumo_seed": 1752104379,
+      "route_sha256": "716ab57004a802de60005746686cadfdb3dfcbf42627b7db50802c9d5b111d8f"
+    },
+    {
+      "date": "20220814",
+      "period": "0645",
+      "tag": "R1T41",
+      "sumo_seed": 1890426749,
+      "route_sha256": "1baba2ee4abfe72de8e630ee88c8a47ee361bb85024699d917be14911d32e9be"
+    },
+    {
+      "date": "20220814",
+      "period": "0900",
+      "tag": "R1T42",
+      "sumo_seed": 1907463273,
+      "route_sha256": "3e080e479cbd244063fc23addef7d06e873a85fd89b87e2bbaa1cb19b70e8132"
+    },
+    {
+      "date": "20220814",
+      "period": "1045",
+      "tag": "R1T43",
+      "sumo_seed": 948545378,
+      "route_sha256": "acab1395876758589537b9cda5479e88f57f7eae9eaedac3bc5e577411440a95"
+    },
+    {
+      "date": "20220814",
+      "period": "1545",
+      "tag": "R1T44",
+      "sumo_seed": 2014074390,
+      "route_sha256": "1a685f1ff43eabc4d82ac0491ed3aed3ed15572f200a1aa669ab58234bb41b08"
+    },
+    {
+      "date": "20220814",
+      "period": "1800",
+      "tag": "R1T45",
+      "sumo_seed": 1314162709,
+      "route_sha256": "3fdfac2463715f7342d452825b091d02c63c0195ead8391db0491539573b4571"
+    },
+    {
+      "date": "20220814",
+      "period": "1815",
+      "tag": "R1T46",
+      "sumo_seed": 2106404175,
+      "route_sha256": "01ee113f8857ce1f4dcefd7ddb76f47e23ffb59754cd3d9f2614a6119f5d4889"
+    },
+    {
+      "date": "20220814",
+      "period": "1915",
+      "tag": "R1T47",
+      "sumo_seed": 285993332,
+      "route_sha256": "c207276638cc00da000b664961bcbf6ec40b3e483a5d02002a6862a8b32a2b34"
+    },
+    {
+      "date": "20220814",
+      "period": "2015",
+      "tag": "R1T48",
+      "sumo_seed": 215997989,
+      "route_sha256": "c41641068b29f5ff035843e62aa83c20749b836cf1416f23ea08242ebe8b3323"
+    },
+    {
+      "date": "20221030",
+      "period": "0600",
+      "tag": "R1T49",
+      "sumo_seed": 663363014,
+      "route_sha256": "1ace89e257b6d712b9a55e0b25d177a4f70bc55838f17d6691eb3dcc3e74c4b2"
+    },
+    {
+      "date": "20221030",
+      "period": "0645",
+      "tag": "R1T50",
+      "sumo_seed": 2144659653,
+      "route_sha256": "c2c3983cdeef8cfcb5135e6557571cce947a65f7b9ccf301f1701fd5567b1f1c"
+    },
+    {
+      "date": "20221030",
+      "period": "0845",
+      "tag": "R1T51",
+      "sumo_seed": 1076410132,
+      "route_sha256": "5e0289a0d28fba716f17635c77f8673972a8558f6033cf60560e95bbe69a3d98"
+    },
+    {
+      "date": "20221030",
+      "period": "0945",
+      "tag": "R1T52",
+      "sumo_seed": 1270022075,
+      "route_sha256": "eeb4559cb32bbe16419ef916088af4613714d77acac6c4c9518dfd30ad68469f"
+    },
+    {
+      "date": "20221030",
+      "period": "1230",
+      "tag": "R1T53",
+      "sumo_seed": 1312200191,
+      "route_sha256": "4616ebdf2936b7fbb17ede220a359256607e8301244ef6911bf938196fca6981"
+    },
+    {
+      "date": "20221030",
+      "period": "1415",
+      "tag": "R1T54",
+      "sumo_seed": 1669745392,
+      "route_sha256": "538ac83b967a778ee793051e7e6f33c7371857271493bb9d8543633a8a5bf42a"
+    },
+    {
+      "date": "20221030",
+      "period": "2015",
+      "tag": "R1T55",
+      "sumo_seed": 485840187,
+      "route_sha256": "8acc8dcd992c08c67356b37e03ab5af09bf6e489b7c0718c360687cb585668e4"
+    },
+    {
+      "date": "20221030",
+      "period": "2045",
+      "tag": "R1T56",
+      "sumo_seed": 1906775218,
+      "route_sha256": "41e87f32259f354e68fa5c69a67febb05628841a0b6dbfde7d695bfb6ebedfee"
+    },
+    {
+      "date": "20220909",
+      "period": "0715",
+      "tag": "R1T57",
+      "sumo_seed": 1302887305,
+      "route_sha256": "521e4763413c7a40d5c5d2e31aebd1f8abc7d750162fdce432853c9535f16804"
+    },
+    {
+      "date": "20220909",
+      "period": "0730",
+      "tag": "R1T58",
+      "sumo_seed": 1331675406,
+      "route_sha256": "5dc651a4d44b6126890cf348fd15aca0b8f92e912c0d2030f5d6d6bcb8a401c6"
+    },
+    {
+      "date": "20220909",
+      "period": "0815",
+      "tag": "R1T59",
+      "sumo_seed": 470323848,
+      "route_sha256": "cd9a4fe1dcaa4c03e6ab6de02d9878e010b7523ceca674654fc9894c433538bd"
+    },
+    {
+      "date": "20220909",
+      "period": "1145",
+      "tag": "R1T60",
+      "sumo_seed": 467876562,
+      "route_sha256": "bb8f1718c6bf0090458824ba7982afd885c2130e0beb96340a657e2beaf19fb6"
+    },
+    {
+      "date": "20220909",
+      "period": "1245",
+      "tag": "R1T61",
+      "sumo_seed": 713792411,
+      "route_sha256": "3a271db000bd1671751c47898c6d574b5d77c3658a7485b8f86804eeaf797cfb"
+    },
+    {
+      "date": "20220909",
+      "period": "1345",
+      "tag": "R1T62",
+      "sumo_seed": 1114382136,
+      "route_sha256": "25ad27cafede279e382a92c54399d11074aa349f82ff51419efc2869bc519e78"
+    },
+    {
+      "date": "20220909",
+      "period": "1515",
+      "tag": "R1T63",
+      "sumo_seed": 2032767382,
+      "route_sha256": "03f7638961cc04537c54d1071d5a9a70a188aa459ab9ee7d3cf265a7d105ebcf"
+    },
+    {
+      "date": "20220909",
+      "period": "2030",
+      "tag": "R1T64",
+      "sumo_seed": 303379587,
+      "route_sha256": "bb113623e16ae1626e6aa0b650458b393329b5e8be8202e6fd4d70dadca5f3ee"
+    }
+  ]
+}

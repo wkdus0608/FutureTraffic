@@ -1,0 +1,106 @@
+{
+ "experiment": "ARENA3_PPO_V1",
+ "base_lock_sha256": "3b0d5f9ee576bb8e03b48a88ad09067fa03599564b4b2ce6927a2666d5f77b43",
+ "stage2_config_sha256": "e6474c79859f98f8aaf252a666877ed642ab7b2b0dde9c4a8ee6d1d41c33fae9",
+ "description": "교수 제안(Stable-Baselines3 계열) 비교. G1·S2와 같은 에피소드 실행기·선택 지점 SMDP·정확 보상·관측 119칸·6모드 행동·학습 상황을 쓰고 학습 규칙만 PPO로 바꾼다(220·221절).",
+ "why_not_sb3_library": "run_arena_episode의 보상은 에피소드가 끝난 뒤 tripinfo로 정산된다. SB3 환경의 step()은 매 단계 보상을 바로 돌려줘야 하므로 그대로 쓰면 보상을 근사로 바꿔야 한다. 갱신 규칙과 기본값은 SB3 PPO를 따른다.",
+ "variants": {
+  "P1": {
+   "start": "M4",
+   "init": null,
+   "anchor_bias": 1.0986122886681098,
+   "note": "G1과 같은 출발: 처음 탐욕 정책 = M4, 후보 2개일 때 M4 확률 0.75(G1 탐험률 0.5와 같은 처음 행동 분포)",
+   "compare_with": "G1"
+  },
+  "P2": {
+   "start": "S2A_pre",
+   "init": "stage2/S2A_train/seed_<난수>/pretrained",
+   "anchor_bias": 0.0,
+   "note": "같은 난수의 S2A_pre에서 출발: 처음 탐욕 정책 = S2A_pre",
+   "compare_with": "S2A_pre"
+  }
+ },
+ "seeds": [
+  42,
+  43,
+  44
+ ],
+ "scenarios": "arena3_g1.scenario_for(난수, 에피소드) — G1과 같은 학습 상황(학습 8일 × 15분 칸 × 새 도착 배치)",
+ "episodes_per_seed": 448,
+ "episodes_per_update": 8,
+ "parallel_episodes": 2,
+ "critic_warmup_updates": 2,
+ "budget_unit": "에피소드 수(G1 난수당 448~452판). 경과시간 예산은 CPU가 적은 런타임에서 경험이 줄어든다(216절).",
+ "ppo": {
+  "learning_rate": 0.0003,
+  "adam_eps": 1e-05,
+  "n_epochs": 10,
+  "batch_size": 64,
+  "clip_range": 0.2,
+  "gamma_per_5s": 0.99,
+  "gae_lambda_per_5s": 0.95,
+  "normalize_advantage": true,
+  "ent_coef": 0.0,
+  "vf_coef": 0.5,
+  "max_grad_norm": 0.5,
+  "target_kl": null,
+  "smdp": "선택 지점 k에서 다음 선택까지 n_k단계(5초): 할인 0.99^n_k, GAE 계수 (0.99·0.95)^n_k, 예열 갱신은 λ=1(몬테카를로 반환값)으로 평가자만 학습",
+  "optimizers": "행위자·평가자를 따로(Adam, 각각 기울기 노름 0.5). SB3는 한 옵티마이저로 묶지만 평가자의 큰 초기 기울기가 행위자 갱신을 줄이지 않게 나눈다."
+ },
+ "actor": {
+  "network": [
+   64,
+   64
+  ],
+  "temperature": 0.25,
+  "form": "softmax((Q − Q[기준 모드]) / 온도 + 기준 편향·[기준 모드]), 유효 모드만. Q는 G1·S2와 같은 DuelingNet(값 머리는 상쇄되어 쓰지 않음). 기준 편향은 학습되는 값.",
+  "evaluation": "탐욕(가장 큰 값, 같으면 M4 쪽)"
+ },
+ "critic": {
+  "network": [
+   64,
+   64
+  ],
+  "activation": "tanh",
+  "init": "직교 초기화(은닉 √2, 출력 1, SB3 기본)"
+ },
+ "max_discarded": 5,
+ "evaluation": {
+  "part": "eval",
+  "situations": 84,
+  "models": 3,
+  "judge": "config/arena3_v1.json:judge (그대로)",
+  "baseline": "arena3/referee/baseline",
+  "confirmation_baseline": "arena3/stage2/confirm/baseline"
+ },
+ "rules": {
+  "main": "M4 대비 ARENA3 판정 그대로(날짜 평균 ≥ 0.3초, t95 하한 > 0, 양수 날짜 ≥ 5, 좌회전 +5초 이내, 300초 초과 ≤ M4, 정책 고유 충돌 0, 품질 오류 0).",
+  "paired": "같은 84상황에서 날짜별 M4 대비 이득의 차(차량 가중, 판정과 같은 정의)의 날짜 7개 평균과 t95(자유도 6).",
+  "ppo_vs_dqn": "P1 − G1의 평균 > 0 이고 t95 하한 > 0 이면 '같은 출발·같은 학습 상황에서 PPO가 DQN(G1)보다 짧다'.",
+  "ppo_finetune_adds": "P2 − S2A_pre의 평균 > 0 이고 t95 하한 > 0 이면 'PPO 미세조정이 사전학습 위에 이득을 더했다'. 하한 < 0 < 상한이면 '구분 못 함'.",
+  "winner": "P1·P2 가운데 main을 통과한 것 중 날짜 평균이 큰 하나만 C1·C2 84상황에서 한 번 확인(기준선은 S2C 확인 기준선 재사용). 통과한 것이 없으면 확인하지 않는다.",
+  "paired_comparisons": [
+   [
+    "P1",
+    "G1"
+   ],
+   [
+    "P2",
+    "S2A_pre"
+   ],
+   [
+    "P2",
+    "S2A"
+   ],
+   [
+    "P2",
+    "S2B"
+   ],
+   [
+    "P2",
+    "P1"
+   ]
+  ]
+ },
+ "reporting": "반복 사용 날짜의 SUMO 개발 비교. C1·C2는 같은 7일의 새 도착 배치이며 새 날짜·실제 도로 일반화는 미검증."
+}

@@ -1,0 +1,319 @@
+{
+  "experiment": "NN12_V1",
+  "prereg_sha256": "630a53276130e3ad6f15427b7184ec07c5b922659cc624cdb25c3bc362de1111",
+  "nn1_config_sha256": "2b427c5af6d33c33c60e31adcf8d19d1e2d701dbd72c39bd390922ab9cc7dd3f",
+  "evaluation_fingerprint": "9d3b7504064b",
+  "network12_fingerprint": "711875f6c939",
+  "environment_fingerprint": "b20888514ea3",
+  "dates": [
+    "20220928",
+    "20220813"
+  ],
+  "windows": [
+    [
+      "20220928",
+      1
+    ],
+    [
+      "20220928",
+      2
+    ],
+    [
+      "20220928",
+      3
+    ],
+    [
+      "20220928",
+      4
+    ],
+    [
+      "20220928",
+      5
+    ],
+    [
+      "20220928",
+      6
+    ],
+    [
+      "20220928",
+      7
+    ],
+    [
+      "20220928",
+      8
+    ],
+    [
+      "20220928",
+      9
+    ],
+    [
+      "20220928",
+      10
+    ],
+    [
+      "20220928",
+      11
+    ],
+    [
+      "20220928",
+      12
+    ],
+    [
+      "20220928",
+      13
+    ],
+    [
+      "20220928",
+      14
+    ],
+    [
+      "20220928",
+      15
+    ],
+    [
+      "20220928",
+      16
+    ],
+    [
+      "20220928",
+      17
+    ],
+    [
+      "20220928",
+      18
+    ],
+    [
+      "20220928",
+      19
+    ],
+    [
+      "20220928",
+      20
+    ],
+    [
+      "20220928",
+      21
+    ],
+    [
+      "20220928",
+      22
+    ],
+    [
+      "20220928",
+      23
+    ],
+    [
+      "20220813",
+      1
+    ],
+    [
+      "20220813",
+      2
+    ],
+    [
+      "20220813",
+      3
+    ],
+    [
+      "20220813",
+      4
+    ],
+    [
+      "20220813",
+      5
+    ],
+    [
+      "20220813",
+      6
+    ],
+    [
+      "20220813",
+      7
+    ],
+    [
+      "20220813",
+      8
+    ],
+    [
+      "20220813",
+      9
+    ],
+    [
+      "20220813",
+      10
+    ],
+    [
+      "20220813",
+      11
+    ],
+    [
+      "20220813",
+      12
+    ],
+    [
+      "20220813",
+      13
+    ],
+    [
+      "20220813",
+      14
+    ],
+    [
+      "20220813",
+      15
+    ],
+    [
+      "20220813",
+      16
+    ],
+    [
+      "20220813",
+      17
+    ],
+    [
+      "20220813",
+      18
+    ],
+    [
+      "20220813",
+      19
+    ],
+    [
+      "20220813",
+      20
+    ],
+    [
+      "20220813",
+      21
+    ],
+    [
+      "20220813",
+      22
+    ],
+    [
+      "20220813",
+      23
+    ]
+  ],
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "input_seed": 42,
+  "models": {
+    "N5": {
+      "world": "P",
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "source": "explore_nn1/P/aug/models/r1(자료 강화 라운드 1, NN1 selected.json)",
+      "identities": {
+        "42": "fd78e01fac2d6e29d87fb0ed52e3c2cb17136ebabebbe9c14b01952b62f9aa84",
+        "43": "c5d23ae6cc3b3d39edc66f0e3101d8d63ca0d409fd968a16913b96229fba36b7",
+        "44": "162699b33b685a236d1ef9e6df4794e7407eb517584584790a6661bfe0928ad8"
+      }
+    },
+    "Rn": {
+      "world": "R",
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "source": "explore_nn1/R/base/models/Rn",
+      "identities": {
+        "42": "f5aa1f8b84e3e1110267c6cf3d66306e56fa5bfd03f0e9f912f106e3cb9ff319",
+        "43": "54669dd5a5cba7e6ad5faa1fb24bb38bc9034d9a76bf92f926adacd61cc2df82",
+        "44": "e5ea187d505b939f964e9242b8b43c53677c3293a6286e5f14e154a877c7fae0"
+      }
+    }
+  },
+  "planners": {
+    "TM4": {
+      "world": "P"
+    },
+    "M4": {
+      "world": "R"
+    }
+  },
+  "neighbor_labels": {
+    "grrrgGGGGGGrrgrrrrgGGGGGrr": "grrrgrrrrrrGggrrrrgrrrrrGg",
+    "grrrgyyyyyyrrgrrrrgyyyyyrr": "grrrgrrrrrryggrrrrgrrrrryg",
+    "grrrgrrrrrrGggrrrrgrrrrrGg": "gGGrgrrrrrrrrgGGrrgrrrrrrr",
+    "grrrgrrrrrryygrrrrgrrrrryy": "gyyrgrrrrrrrrgyyrrgrrrrrrr",
+    "gGGrgrrrrrrrrgGGrrgrrrrrrr": "grrGgrrrrrrrrgrrGGgrrrrrrr",
+    "gyyrgrrrrrrrrgyyrrgrrrrrrr": "grrygrrrrrrrrgrryygrrrrrrr",
+    "grrGgrrrrrrrrgrrGGgrrrrrrr": "grrrgGGGGGGrrgrrrrgGGGGGrr",
+    "grrygrrrrrrrrgrryygrrrrrrr": "grrrgyyyyyyrrgrrrrgyyyyyrr"
+  },
+  "check": {
+    "window": [
+      "20220811",
+      18
+    ],
+    "seed": 42,
+    "reproduce": {
+      "window": [
+        "20220813",
+        12
+      ],
+      "seed": 42
+    }
+  },
+  "correction": {
+    "earlier_code": "e9a1c2307a9652d08268814c23314692e07c99ea641a86857dfd96cf6d9899a5",
+    "rerun_policies": [
+      "N5",
+      "TM4"
+    ],
+    "rerun_hour": 23,
+    "recheck": {
+      "window": [
+        "20220813",
+        22
+      ],
+      "seed": 42
+    },
+    "why": "기록용 시간표 대조가 자정 뒤 첫 판단에서 표 밖을 읽어 23시 조각 20판이 실패했다. 판단·입력·평가 코드는 그대로이고 끝난 900판은 그대로 쓴다(사전 등록 정정 기록)."
+  },
+  "rules": {
+    "p2_gap_s": 2.2,
+    "transfer_gap_s": 2.2,
+    "unstable_window": "20220928_08"
+  },
+  "bands": {
+    "새벽 1~6시": [
+      1,
+      7
+    ],
+    "아침 7~9시": [
+      7,
+      10
+    ],
+    "낮 10~15시": [
+      10,
+      16
+    ],
+    "저녁 16~18시": [
+      16,
+      19
+    ],
+    "밤 19~23시": [
+      19,
+      24
+    ]
+  },
+  "b12_models": {
+    "42": "b4dbff0863",
+    "43": "f99c3749f2",
+    "44": "fdf0af3fb4",
+    "45": "e49f8bee48",
+    "46": "336be6559e"
+  },
+  "reporting": "검증 2일 개발 비교. 흉내 값은 강화학습 값으로 쓰지 않는다. 단독 지도 감소율과 직접 비교하지 않는다."
+}

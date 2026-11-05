@@ -1,0 +1,74 @@
+{
+ "experiment": "PLATOON1C_V1",
+ "design": "PROJECT_PROGRESS.md 246~248절, results/explore/platoon1c_20261101/사전등록.md",
+ "prereg": "results/explore/platoon1c_20261101/사전등록.md",
+ "prereg_sha256": "b1e94bf1037bca1c833cf5b6f135fb80640971ed452cc0cc54cdd6ef5d6f2677",
+ "lock_sha256": "3b0d5f9ee576bb8e03b48a88ad09067fa03599564b4b2ce6927a2666d5f77b43",
+ "platoon1_config_sha256": "4d23a22f545d250d91ece3a59a89b7a7597e32e70fb4424114eddd93a2718ce3",
+ "method": "PT1 학생 3개를 그대로 쓰고, 예측 이득이 문턱 τ 이상일 때만 TM4와 다르게 고른다(보수적 정책 개선). 새 수집·재학습 없음.",
+ "students": {
+  "seeds": [
+   42,
+   43,
+   44
+  ],
+  "model_sha256": [
+   "c8fa7d98ba5938d4408c76e03071b7b3be1305399a2e1df1b004bcc2a05d13f2",
+   "63ac54bda4f1a374528b8d6ac210aef393f6777fbf260e09dedfc96653c9c424",
+   "19173820278430a0e4bc2b0073f524796c03bc601dfd3db5666ea9b07f7fe592"
+  ],
+  "dataset_fingerprint": "9cfd0ca89f49cb488410f3945a69b9fefbe59ed393bf999709d93a18502bd392",
+  "folder": "explore_platoon1/students/seed_<난수>"
+ },
+ "gain_units": "1000 차량·초(학습 라벨과 같은 단위)",
+ "candidates": {
+  "t09": {
+   "tau": 0.9,
+   "data_rate": 0.2
+  },
+  "t20": {
+   "tau": 2.0,
+   "data_rate": 0.1
+  },
+  "t30": {
+   "tau": 3.0,
+   "data_rate": 0.05
+  }
+ },
+ "policy": "허용 녹색 중 TM4가 아닌 것에서 예측 이득이 가장 큰 녹색 g*. 이득(g*) ≥ τ이면 g*, 아니면 TM4 녹색. 허용 녹색이 하나면 신경망을 부르지 않는다.",
+ "evaluation": {
+  "world": "P",
+  "situations": "explore_platoon1_v1.json situations_eval(84)",
+  "models": 3,
+  "baselines": {
+   "PLATOON0": [
+    "M4",
+    "TM4",
+    "OM4",
+    "P1M4"
+   ],
+   "PLATOON1": [
+    "PT1"
+   ],
+   "PBASE": [
+    "FIXC",
+    "P0"
+   ]
+  },
+  "evaluation_fingerprint": "b225b336de0752313f8e0d186a21bf645d487466476e521ab765f1e12c93f43c",
+  "judge": "config/arena3_v1.json:judge (그대로)"
+ },
+ "rules": {
+  "main": "후보별: P 세계 M4 대비 ARENA3 판정 통과 + L = 후보 − TM4의 날짜 평균 ≥ 0.3초, t95 하한 > 0, 양수 날짜 ≥ 5",
+  "learning_min_gain_s": 0.3,
+  "learning_min_positive_dates": 5,
+  "selection": "통과한 후보 중 L 평균이 가장 큰 것 하나. 통과가 없으면 확인을 돌리지 않는다.",
+  "confirmation": "선택된 후보만 확인 84상황(C1·C2, P 세계)에서 M4·TM4(새로 돌림)와 함께 한 번: ARENA3 통과 + L 하한 > 0"
+ },
+ "smoke": {
+  "situation": "situations_eval[0]",
+  "never_tau": 1000000000.0,
+  "always_tau": 1e-06,
+  "checks": "τ 매우 큼 = PLATOON0 TM4, τ≈0 = PLATOON1 PT1_m0, 후보 τ는 PT1_m0보다 덜 바꿈"
+ }
+}
